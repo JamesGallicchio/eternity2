@@ -23,7 +23,12 @@ structure Tile where
   sign: Option Sign
 deriving DecidableEq, Repr
 instance: ToString Tile where
-  toString tile := s!"\n {tile.up} \n{tile.left}{tile.sign}{tile.right}\n {tile.down} "
+  toString tile :=
+    let signage :=
+      match tile.sign with
+        | none => " "
+        | some s => Sign.toString s
+    s!"\n {tile.up} \n{tile.left}{signage}{tile.right}\n {tile.down} "
 
 def rotl (tile : Tile) :=
   Tile.mk tile.right tile.left tile.up tile.down tile.sign
