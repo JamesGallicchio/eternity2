@@ -1,3 +1,7 @@
+import Std
+
+open Std
+
 -- **************************
 -- *   Generic CNF stuff    *
 -- **************************
@@ -39,29 +43,31 @@ instance : ToString Formula where
 
 def Formula.buildAtomMap : Formula → Nat × HashMap Atom Nat × HashMap Nat Atom
 | ⟨clauses⟩ =>
-  let (nameMap, lastVar, _) := Foldable.fold clauses (fun acc c =>
-    c.lits.foldl (fun (map,last,count) ⟨_,atom⟩ =>
-      -- if `atom` is in map, do nothing, else assign `atom` to next
-      match map.get? atom with
-      | some _  => (map,last,count+1)
-      | none    => (map.set atom (last+1), last+1,count+1)
-    ) acc
-  ) (HashMap.new, 0, 0)
-  let revMap := nameMap.fold (fun acc (k, v) => acc.set v k) (HashMap.new)
+  let (nameMap, lastVar, _) := clauses.foldl
+    (fun acc c =>
+      c.lits.foldl (fun (map,last,count) ⟨_,atom⟩ =>
+        -- if `atom` is in map, do nothing, else assign `atom` to next
+        match map.find? atom with
+        | some _  => (map,last,count+1)
+        | none    => (map.insert atom (last+1), last+1,count+1)
+      )
+    acc
+  ) (HashMap.empty, 0, 0)
+  let revMap := nameMap.fold (fun acc k v => acc.insert v k) (HashMap.empty)
   (lastVar, nameMap, revMap)
 
 def Formula.printFromMap (println : String → IO Unit)
   : Formula → Nat × HashMap Atom Nat × HashMap Nat Atom → IO Unit
 | ⟨clauses⟩, ⟨lastVar, nameMap, revMap⟩ => do
-  println s!"p cnf {lastVar} {clauses.size}"
+  println s!"p cnf {lastVar} {clauses.length}"
   for i in [1:lastVar+1] do
-    println s!"c {i} {revMap.get? i |>.get!}"
+    println s!"c {i} {revMap.find? i |>.get!}"
   for c in clauses do
     let nums := c.lits.map (fun ⟨neg,a⟩ =>
-      let n := nameMap.get? a |>.get!
+      let n := nameMap.find? a |>.get!
       if neg then "-" ++ toString n else toString n
     )
-    println (FoldableOps.toString (nums ++ ["0"]) (sep := " "))
+    println (String.intercalate " " (nums ++ ["0"]))
 
 def Formula.printDimacs (f : Formula) : IO Unit :=
   f.printFromMap (IO.println) (f.buildAtomMap)
@@ -92,8 +98,8 @@ def Formula.checkSAT (f : Formula) (cnfFile : String)
       |>.map (·.toInt!)
       |>.filter (· ≠ 0)
       |>.foldl (fun acc i =>
-          acc.set (mapStuff.2.2.get? (Int.natAbs i) |>.get!) (i > 0)
-        ) (HashMap.new)
+          acc.insert (mapStuff.2.2.find? (Int.natAbs i) |>.get!) (i > 0)
+        ) (HashMap.empty)
     )
   | "s UNSATISFIABLE" :: _ => return none
   | _ =>
