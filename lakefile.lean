@@ -9,7 +9,7 @@ lean_lib Eternity2 {
   -- add library configuration options here
 }
 
-@[defaultTarget]
+@[default_target]
 lean_exe eternity2 {
   root := `Main
 }
