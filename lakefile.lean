@@ -13,3 +13,6 @@ lean_lib Eternity2 {
 lean_exe eternity2 {
   root := `Main
 }
+
+require std from git
+  "https://github.com/JamesGallicchio/std4" @ "iterators"
