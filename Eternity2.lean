@@ -65,7 +65,7 @@ def up_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
   if row.val = 0 then borderColor else
     dboard.board[2 * row.val - 1]![col]!
 def down_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
-  if row.val = 2 * row.val - 2 then borderColor else
+  if row.val = size - 1 then borderColor else
     dboard.board[2 * row.val + 1]![col]!
 def left_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
   if col.val = 0 then borderColor else
