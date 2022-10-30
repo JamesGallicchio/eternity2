@@ -6,7 +6,7 @@ open Std
 namespace EncCNF
 
 def Var := Nat
-deriving Inhabited, DecidableEq, Hashable, Repr
+deriving Inhabited, DecidableEq, Hashable, Repr, ToString
 
 /-- Either `v` or `¬v` for variable `v`. -/
 structure Literal where
@@ -14,11 +14,14 @@ structure Literal where
   neg : Bool
 deriving Inhabited, DecidableEq, Hashable, Repr
 
+instance : ToString Literal where
+  toString | ⟨v,n⟩ => s!"{if n then "¬" else ""}{v}"
+
 nonrec def Literal.not : Literal → Literal
 | ⟨v,n⟩ => ⟨v, not n⟩
 
 def Clause := List Literal
-deriving Inhabited, DecidableEq, Hashable, Repr
+deriving Inhabited, DecidableEq, Hashable, Repr, ToString
 
 /-- State for an encoding -/
 structure State where
@@ -43,38 +46,19 @@ def printAux (println : String → IO Unit)
 
 def printDIMACS := printAux IO.println
 
-def checkSAT (cnfFile : String) (s : State) 
-  : IO (Option (HashMap Var Bool)) := do
+def printFileDIMACS (cnfFile : String) (s : State) : IO Unit := do
   -- Write formula to cnfFile
   IO.FS.withFile cnfFile .write (fun handle =>
     printAux handle.putStrLn s
   )
-  -- Run cadical on cnfFile
-  let out := (← IO.Process.output {
-    stdin := .piped
-    stdout := .piped
-    stderr := .piped
-    cmd := "cadical"
-    args := #[cnfFile]
-  }).stdout
-  let lines := out.splitOn "\n" |>.filter (not <| ·.startsWith "c")
-  match lines with
-  | "s SATISFIABLE" :: satis =>
-    return some (
-      satis
-      |>.filter (not <| ·.isEmpty)
-      |>.map (·.drop 2 |>.splitOn " ")
-      |>.join
-      |>.map (·.toInt!)
-      |>.filter (· ≠ 0)
-      |>.foldl (fun acc i =>
-          acc.insert (Int.natAbs i - 1) (i > 0)
-        ) (HashMap.empty)
+
+def appendFileDIMACSClause (cnfFile : String) (c : Clause) (_ : State) : IO Unit := do
+  let nums := c.map (fun ⟨v, neg⟩ =>
+      if neg then "-" ++ toString v.succ else toString v.succ
     )
-  | "s UNSATISFIABLE" :: _ => return none
-  | _ =>
-    IO.println out
-    return none
+  IO.FS.withFile cnfFile .append (fun handle =>
+    handle.putStrLn (String.intercalate " " (nums ++ ["0"]))
+  )
 
 end State
 
@@ -85,8 +69,9 @@ def EncCNF := StateM EncCNF.State
 
 namespace EncCNF
 
-nonrec def run (e : EncCNF α) : α × EncCNF.State :=
-  e.run ⟨0, [], HashMap.empty, ""⟩
+nonrec def run (s : State) (e : EncCNF α) : α × State := e.run s
+
+nonrec def new : EncCNF α → α × State := run ⟨0, [], HashMap.empty, ""⟩
 
 def newCtx (name : String) (inner : EncCNF α) : EncCNF α := do
   let oldState ← get
@@ -115,7 +100,7 @@ def mkTemp : EncCNF Var := do
 
 
 example : IO Unit := do
-  let ((), enc) := run do
+  let ((), enc) := new do
     let x ← mkVar "x1"
     newCtx "hi." do
       let t1 ← mkTemp
