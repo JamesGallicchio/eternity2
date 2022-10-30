@@ -1,5 +1,7 @@
 import Eternity2.AuxDefs
 
+namespace Eternity2
+
 @[reducible]
 def Color := Nat
 def borderColor : Color := 0
