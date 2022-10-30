@@ -53,12 +53,12 @@ def printFileDIMACS (cnfFile : String) (s : State) : IO Unit := do
   )
 
 def appendFileDIMACSClause (cnfFile : String) (c : Clause) (_ : State) : IO Unit := do
-  let nums := c.map (fun ⟨v, neg⟩ =>
-      if neg then "-" ++ toString v.succ else toString v.succ
+    let nums := c.map (fun ⟨v, neg⟩ =>
+        if neg then "-" ++ toString v.succ else toString v.succ
+      )
+    IO.FS.withFile cnfFile .append (fun handle =>
+      handle.putStrLn (String.intercalate " " (nums ++ ["0"]))
     )
-  IO.FS.withFile cnfFile .append (fun handle =>
-    handle.putStrLn (String.intercalate " " (nums ++ ["0"]))
-  )
 
 end State
 
@@ -135,7 +135,7 @@ def VarBlock.get (v : VarBlock ds) (i : Fin v.hdLen)
   | [_],        ⟨start,_⟩ => Nat.add start i
   | _::d'::ds', ⟨start,_⟩ =>
     ⟨Nat.add start (Nat.mul i ((d'::ds').foldl (· * ·) 1)), by
-      simp; apply Nat.zero_lt_succ⟩ 
+      simp; apply Nat.zero_lt_succ⟩
 
 instance : GetElem (VarBlock ds) Nat (VarBlock.elemTy ds) (fun v i => i < v.hdLen) where
   getElem v i h := v.get ⟨i,h⟩

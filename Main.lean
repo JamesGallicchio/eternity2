@@ -23,7 +23,7 @@ def signSols (ts : TileSet) : IO (List TileSet) := do
   while !done do
     if count % 1000 = 0 then
       IO.println s!"count = {count}"
-    
+
     match ← SATSolve.runCadical "cnf/temp.cnf" with
     | none => done := true
     | some as =>
@@ -34,7 +34,7 @@ def signSols (ts : TileSet) : IO (List TileSet) := do
       let newClause : EncCNF.Clause :=
         tsVars.map (fun (_,v) => ⟨v, as.find? v |>.get!⟩)
       enc.appendFileDIMACSClause "cnf/temp.cnf" newClause
-  
+
   return sols
 
 

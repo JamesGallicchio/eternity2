@@ -26,5 +26,5 @@ def colorCardConstraints (L : List Tile) (k : Nat) : EncCNF (List (Tile × Var))
     let neg : Array Literal := pos.map (·.not)
     equalK pos (pos.size / 2)
     equalK neg (pos.size / 2)
-  
+
   return varList

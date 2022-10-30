@@ -11,7 +11,7 @@ def atMostK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
     have : j < lits.size := by simp at h; exact h.2
     have : 0 < k+1 := Nat.zero_lt_succ _
     addClause [lits[j].not, ⟨temps[0][j], false⟩]
-  
+
   -- temps[i][j] -> temps[i][j+1]
   for h:i in [0:k+1] do
     have : i < k+1 := by simp at h; exact h.2
@@ -19,7 +19,7 @@ def atMostK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
       have : j+1 < lits.size := by simp at h; exact Nat.add_lt_of_lt_sub h.2
       have : j < lits.size := Nat.lt_of_succ_lt this
       addClause [⟨temps[i][j], true⟩, ⟨temps[i][j+1], false⟩]
-  
+
   -- temps[i][j] ∧ lits[j+1] -> temps[i+1][j+1]
   for h:i in [0:k] do
     have : i+1 < k+1 := by simp at h; exact Nat.succ_lt_succ h.2
@@ -50,7 +50,7 @@ def atLeastK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
     for h:i in [1:k+1] do
       have : i < k+1 := h.2
       addClause [⟨temps[i][0], true⟩]
-  
+
   -- temps[i][j+1] ∧ ¬lits[j+1] -> temps[i][j]
   for h:i in [0:k+1] do
     have : i < k+1 := by simp at h; exact h.2
@@ -58,7 +58,7 @@ def atLeastK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
       have : j+1 < lits.size := by simp at h; exact Nat.add_lt_of_lt_sub h.2
       have : j < lits.size := Nat.lt_of_succ_lt this
       addClause [⟨temps[i][j+1], true⟩, lits[j+1], ⟨temps[i][j], false⟩]
-  
+
   -- temps[i+1][j+1] -> temps[i][j]
   for h:i in [0:k] do
     have : i+1 < k+1 := by simp at h; exact Nat.succ_lt_succ h.2
