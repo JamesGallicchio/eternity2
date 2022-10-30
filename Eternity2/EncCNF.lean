@@ -14,6 +14,9 @@ structure Literal where
   neg : Bool
 deriving Inhabited, DecidableEq, Hashable, Repr
 
+nonrec def Literal.not : Literal → Literal
+| ⟨v,n⟩ => ⟨v, not n⟩
+
 def Clause := List Literal
 deriving Inhabited, DecidableEq, Hashable, Repr
 
@@ -41,7 +44,7 @@ def printAux (println : String → IO Unit)
 def printDIMACS := printAux IO.println
 
 def checkSAT (cnfFile : String) (s : State) 
-  : IO (Option (HashMap String Bool)) := do
+  : IO (Option (HashMap Var Bool)) := do
   -- Write formula to cnfFile
   IO.FS.withFile cnfFile .write (fun handle =>
     printAux handle.putStrLn s
@@ -65,7 +68,7 @@ def checkSAT (cnfFile : String) (s : State)
       |>.map (·.toInt!)
       |>.filter (· ≠ 0)
       |>.foldl (fun acc i =>
-          acc.insert (s.names.find? (Int.natAbs i) |>.get!) (i > 0)
+          acc.insert (Int.natAbs i - 1) (i > 0)
         ) (HashMap.empty)
     )
   | "s UNSATISFIABLE" :: _ => return none
@@ -126,14 +129,14 @@ structure VarBlock (dims : List Nat) where
   start : Var
   h_dims : dims.length > 0
 
-@[reducible, inline]
+@[reducible, inline, simp]
 def VarBlock.hdLen : VarBlock ds → Nat
 | ⟨_, _⟩ =>
   match ds with
   | [] => by contradiction
   | d::_ => d
 
-@[reducible, inline]
+@[reducible, inline, simp]
 def VarBlock.elemTy : List Nat → Type
   | [] => Empty
   | [_] => Var
