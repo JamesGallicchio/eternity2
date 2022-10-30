@@ -13,12 +13,12 @@ deriving DecidableEq, Repr
 def Sign.toString : Sign → String
 | plus => "+"
 | minus => "-"
-instance: ToString Sign := ⟨Sign.toString⟩
+instance : ToString Sign := ⟨Sign.toString⟩
 
 structure Tile where
   (up down left right : Color)
   sign : Option Sign
-deriving DecidableEq, Repr
+deriving DecidableEq, Repr, Inhabited
 
 namespace Tile
 
@@ -54,6 +54,9 @@ structure TileBoard (size : Nat) where
   board : Array (Array Tile)
   board_size :
     board.size = size ∧ ∀ i, (h : i < board.size) → board[i].size = size
+
+namespace TileBoard
+
 instance : ToString (TileBoard size) where
   toString (tile : TileBoard size) :=
     tile.board.toList.map (·.toList.map (toString))
@@ -64,6 +67,11 @@ instance : ToString (TileBoard size) where
         |> String.intercalate "\n"
       )
     |> String.intercalate "\n"
+
+def tileSet (tb : TileBoard size) : List Tile :=
+  tb.board.foldr (·.toList ++ ·) []
+
+end TileBoard
 
 structure DiamondBoard (size : Nat) where
   board: Array (Array Diamond)
@@ -108,6 +116,7 @@ def dboard_to_tboard (dboard : DiamondBoard size) (checker : Bool) : TileBoard s
                 else none)
   return TileBoard.mk a sorry
 
+/-- `size`x`size` board with `colors` colors assigned randomly. -/
 def gen_dboard (size : Nat) (colors : Nat) : IO (DiamondBoard size) := do
   let mut a := Array.mkEmpty (2 * size - 1)
   for i in [0:2*size - 1] do
