@@ -16,40 +16,54 @@ def Sign.toString : Sign → String
 instance: ToString Sign := ⟨Sign.toString⟩
 
 structure Tile where
-  up: Color
-  down: Color
-  left: Color
-  right: Color
-  sign: Option Sign
+  (up down left right : Color)
+  sign : Option Sign
 deriving DecidableEq, Repr
-instance: ToString Tile where
-  toString tile :=
-    let signage :=
-      match tile.sign with
-        | none => " "
-        | some s => Sign.toString s
-    s!"\n {tile.up} \n{tile.left}{signage}{tile.right}\n {tile.down} "
 
-def rotl (tile : Tile) :=
-  Tile.mk tile.right tile.left tile.up tile.down tile.sign
+namespace Tile
+
+def toString (tile : Tile) :=
+  let signage :=
+    match tile.sign with
+      | none => " "
+      | some s => Sign.toString s
+  s!"┌{tile.up}┐\n{tile.left}{signage}{tile.right}\n└{tile.down}┘"
+
+
+instance: ToString Tile where
+  toString := toString
+
+def rotl : Tile → Tile
+| ⟨up,down,left,right,sign⟩ => ⟨right,left,up,down,sign⟩
 
 def eq (tile1 tile2 : Tile) :=
   rotate 0 || rotate 1 || rotate 2 || rotate 3
 where rotate n := Function.iterate rotl n tile1 == tile2
 
+end Tile
+
+
 @[reducible]
 def Diamond := {c : Color // c ≠ borderColor}
 deriving Repr
-instance: Inhabited Diamond where
+
+instance : Inhabited Diamond where
   default := ⟨1, by decide⟩
 
 structure TileBoard (size : Nat) where
-  board: Array (Array Tile)
-  boardsize:
-    board.size = size /\ ∀ i, (h : i < board.size) → board[i].size = size
-instance: ToString (TileBoard size) where
+  board : Array (Array Tile)
+  board_size :
+    board.size = size ∧ ∀ i, (h : i < board.size) → board[i].size = size
+instance : ToString (TileBoard size) where
   toString (tile : TileBoard size) :=
-    toString (tile.board)
+    tile.board.toList.map (·.toList.map (toString))
+    |> List.map (fun row =>
+        row
+        |>.map (·.splitOn "\n")
+        |>.foldl (fun L1 L2 => List.zipWith (· ++ " " ++ ·) L1 L2) ["","",""]
+        |> String.intercalate "\n"
+      )
+    |> String.intercalate "\n"
 
 structure DiamondBoard (size : Nat) where
   board: Array (Array Diamond)
@@ -58,8 +72,8 @@ structure DiamondBoard (size : Nat) where
     if i % 2 = 0
     then board[i].size = size - 1
     else board[i].size = size
-deriving Repr
 
+namespace DiamondBoard
 
 def up_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
   if row.val = 0 then borderColor else
@@ -81,13 +95,17 @@ def diamond_to_tile (dboard : DiamondBoard size) (row col : Fin size) :=
     (left_color dboard row col)
     (right_color dboard row col)
 
-def dboard_to_tboard (dboard : DiamondBoard size) : TileBoard size := Id.run do
+def dboard_to_tboard (dboard : DiamondBoard size) (checker : Bool) : TileBoard size := Id.run do
   let mut a := Array.mkEmpty size
   for i in [0:size] do
     a := a.push (Array.mkEmpty size)
     for j in [0:size] do
       a := a.set! i
-        <| (a.get! i).push <| diamond_to_tile dboard ⟨i, sorry⟩ ⟨j, sorry⟩ none
+        <| (a.get! i).push
+          <| diamond_to_tile dboard ⟨i, sorry⟩ ⟨j, sorry⟩
+                (if checker then
+                  some (if (i+j) % 2 = 0 then .plus else .minus)
+                else none)
   return TileBoard.mk a sorry
 
 def gen_dboard (size : Nat) (colors : Nat) : IO (DiamondBoard size) := do
@@ -100,10 +118,11 @@ def gen_dboard (size : Nat) (colors : Nat) : IO (DiamondBoard size) := do
       a := a.set! i <| (a.get! i).push (⟨color, sorry⟩ : Diamond)
   return DiamondBoard.mk a sorry sorry
 
+end DiamondBoard
 
-def Main : IO Unit := do
-  let b ← gen_dboard 6 9
-  let t := dboard_to_tboard b
+def main : IO Unit := do
+  let b ← DiamondBoard.gen_dboard 6 9
+  let t := DiamondBoard.dboard_to_tboard b true
   IO.print t
 
-#eval Main
+#eval main
