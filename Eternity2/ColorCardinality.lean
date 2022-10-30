@@ -14,7 +14,7 @@ def colorCardConstraints (L : List Tile) (k : Nat) : EncCNF (List (Tile × Var))
     let var ← mkVar s!"tile_sign{t.up}{t.right}{t.down}{t.left}"
     return (t,var) :: rest
     ) []
-  for c in [0:k] do
+  for c in [1:k+1] do
     let cVars := varList.bind (fun (t,var) =>
       [ if t.up    = c then [var] else []
       , if t.down  = c then [var] else []
