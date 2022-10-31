@@ -24,9 +24,15 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   let mut count := 0
   let mut sols := []
 
+  let start ← IO.monoMsNow
+  let mut lastUpdateTime := 0
+
   while !done do
-    if reportProgress && count % 1000 = 0 then
-      IO.println s!"count = {count}"
+    let now ← IO.monoMsNow
+    if reportProgress && now - lastUpdateTime > 2000 then
+      lastUpdateTime := now
+      IO.print s!"\rfound {count} ({count*1000/(now-start)}/s)"
+      (←IO.getStdout).flush
 
     match ← SATSolve.runCadical tempFileName with
     | none => done := true
@@ -41,6 +47,10 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
         tsVars.map (fun (_,v) => ⟨v, as.find? v |>.get!⟩)
       enc.appendFileDIMACSClause tempFileName newClause
 
+  if reportProgress then
+    IO.print "\r"
+    (←IO.getStdout).flush
+  
   IO.FS.removeFile tempFileName
   return sols
 
@@ -74,4 +84,6 @@ def printSolutionCountStats := do
 end
 
 def main : IO Unit := do
-  printSolutionCountStats 6
+  let ts ← TileSet.fromFile "puzzles/rand6_6_6.txt"
+  let sols ← signSols ts (reportProgress := true)
+  IO.println s!"{sols.length}"
