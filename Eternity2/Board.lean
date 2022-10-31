@@ -40,6 +40,42 @@ def eq (tile1 tile2 : Tile) :=
   rotate 0 || rotate 1 || rotate 2 || rotate 3
 where rotate n := Function.iterate rotl n tile1 == tile2
 
+def isCorner (tile : Tile) : Bool :=
+  ( tile.up == borderColor
+    && (tile.left == borderColor || tile.right == borderColor)) ||
+  ( tile.down == borderColor
+    && (tile.left == borderColor || tile.right == borderColor)
+  )
+
+def isBorder (tile : Tile) : Bool :=
+  !(isCorner tile) &&
+  ( tile.up == borderColor
+  || tile.down == borderColor
+  || tile.right == borderColor
+  || tile.left == borderColor
+  )
+
+def isCenter (tile : Tile) : Bool :=
+  !(isBorder tile) && !(isCorner tile)
+
+def getBorderColors (tile : Tile) : List Color :=
+  if tile.isCenter then []
+  else if tile.isBorder then
+    if tile.up == borderColor || tile.down == borderColor
+    then [tile.left, tile.right]
+    else [tile.up, tile.down]
+  else if tile.up == borderColor then
+    [tile.down, if tile.left == borderColor then tile.right else tile.left]
+  else [tile.up, if tile.left == borderColor then tile.right else tile.left]
+
+def getCenterColors (tile : Tile) : List Color :=
+  if tile.isCenter then [tile.up, tile.down, tile.left, tile.right]
+  else if tile.isCorner then []
+  else if tile.up   == borderColor then [tile.down]
+  else if tile.down == borderColor then [tile.up]
+  else if tile.left == borderColor then [tile.right]
+  else [tile.left]
+
 end Tile
 
 

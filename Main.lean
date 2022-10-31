@@ -44,6 +44,6 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
 
 
 def main : IO Unit := do
-  let ts ← TileSet.fromFile "puzzles/rand7_7_7.txt"
+  let ts ← TileSet.fromFile "puzzles/rand6_6_6.txt"
   let sols ← signSols ts
-  IO.println s!"{sols.length}"
+  IO.println s!"sols: {sols.length}"
