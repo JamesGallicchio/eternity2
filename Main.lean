@@ -3,8 +3,8 @@ import Eternity2
 open Eternity2
 
 def genTileSet (size colors : Nat) : IO TileSet := do
-  let b ← DiamondBoard.gen_dboard size colors
-  let t := DiamondBoard.dboard_to_tboard b false
+  let b ← DiamondBoard.generate size colors
+  let t := DiamondBoard.tileBoard b false
   return t.tileSet
 
 def fetchEternity2Tiles : IO TileSet :=

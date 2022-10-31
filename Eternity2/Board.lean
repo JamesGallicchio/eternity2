@@ -103,7 +103,7 @@ def diamond_to_tile (dboard : DiamondBoard size) (row col : Fin size) :=
     (left_color dboard row col)
     (right_color dboard row col)
 
-def dboard_to_tboard (dboard : DiamondBoard size) (checker : Bool) : TileBoard size := Id.run do
+def tileBoard (dboard : DiamondBoard size) (checker : Bool) : TileBoard size := Id.run do
   let mut a := Array.mkEmpty size
   for i in [0:size] do
     a := a.push (Array.mkEmpty size)
@@ -117,7 +117,7 @@ def dboard_to_tboard (dboard : DiamondBoard size) (checker : Bool) : TileBoard s
   return TileBoard.mk a sorry
 
 /-- `size`x`size` board with `colors` colors assigned randomly. -/
-def gen_dboard (size : Nat) (colors : Nat) : IO (DiamondBoard size) := do
+def generate (size : Nat) (colors : Nat) : IO (DiamondBoard size) := do
   let mut a := Array.mkEmpty (2 * size - 1)
   for i in [0:2*size - 1] do
     let len := if i % 2 = 0 then (size - 1) else size
