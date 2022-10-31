@@ -7,7 +7,9 @@ open Std
 def TileSet := List Tile
 deriving Inhabited, DecidableEq, ToString
 
-def TileSet.toFile (filename : String) (ts : TileSet) : IO Unit := do
+namespace TileSet
+
+def toFile (filename : String) (ts : TileSet) : IO Unit := do
   let size := Nat.sqrt ts.length
   let numColors :=
     ts.foldl (fun acc ⟨a,b,c,d,_⟩ =>
@@ -21,7 +23,7 @@ def TileSet.toFile (filename : String) (ts : TileSet) : IO Unit := do
   IO.FS.withFile filename .write (fun handle =>
     handle.putStr contents)
 
-def TileSet.fromFile (filename : String) : IO TileSet := do
+def fromFile (filename : String) : IO TileSet := do
   let contents ← IO.FS.withFile filename .read (fun handle =>
     handle.readToEnd
   )
@@ -34,6 +36,14 @@ def TileSet.fromFile (filename : String) : IO TileSet := do
       match s.splitOn " " |>.map String.toNat? with
       | [some a, some b, some c, some d] => ⟨a,c,d,b,none⟩
       | _ => panic! s!"Bad input line {s}")
+
+def toString (ts : TileSet) : String :=
+  ts.map (·.toString)
+  |>.map (·.splitOn "\n")
+  |>.foldl (fun L1 L2 => List.zipWith (· ++ " " ++ ·) L1 L2) ["","",""]
+  |> String.intercalate "\n"
+
+instance : ToString TileSet := ⟨toString⟩
 
 structure TypedTileSet where
   corner: TileSet

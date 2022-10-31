@@ -1,7 +1,7 @@
 import Eternity2.Board
-import Eternity2.CardConstraints
+import Eternity2.CardinalityHelpers
 
-namespace Eternity2.ColorCardinality
+namespace Eternity2.Constraints
 
 open EncCNF
 
