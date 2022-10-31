@@ -10,23 +10,25 @@ def genTileSet (size colors : Nat) : IO TileSet := do
 def fetchEternity2Tiles : IO TileSet :=
   TileSet.fromFile "puzzles/e2pieces.txt"
 
-def signSols (ts : TileSet) : IO (List TileSet) := do
+def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet) := do
+  IO.FS.createDirAll "cnf"
+  let tempFileName := s!"cnf/temp{←IO.rand 1 10000}.cnf"
   let (tsVars, enc) := EncCNF.new (do
     let tsVars ← ColorCardinality.colorCardConstraints ts 9
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
     return tsVars)
 
-  enc.printFileDIMACS "cnf/temp.cnf"
+  enc.printFileDIMACS tempFileName
 
   let mut done := false
   let mut count := 0
   let mut sols := []
 
   while !done do
-    if count % 1000 = 0 then
+    if reportProgress && count % 1000 = 0 then
       IO.println s!"count = {count}"
 
-    match ← SATSolve.runCadical "cnf/temp.cnf" with
+    match ← SATSolve.runCadical tempFileName with
     | none => done := true
     | some as =>
       count := count + 1
@@ -35,8 +37,9 @@ def signSols (ts : TileSet) : IO (List TileSet) := do
       sols := sol :: sols
       let newClause : EncCNF.Clause :=
         tsVars.map (fun (_,v) => ⟨v, as.find? v |>.get!⟩)
-      enc.appendFileDIMACSClause "cnf/temp.cnf" newClause
+      enc.appendFileDIMACSClause tempFileName newClause
 
+  IO.FS.removeFile tempFileName
   return sols
 
 
