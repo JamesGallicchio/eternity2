@@ -16,7 +16,8 @@ def TileSet.toFile (filename : String) (ts : TileSet) : IO Unit := do
     |>.size
   let contents :=
     s!"p tile {size} {size} {numColors}\n" ++
-    String.intercalate "\n" (ts.map (fun ⟨u,d,l,r,_⟩ => s!"{u} {r} {d} {l}"))
+    String.intercalate "\n" (ts.map (fun ⟨u,d,l,r,_⟩ => s!"{u} {r} {d} {l}")) ++
+    "\n"
   IO.FS.withFile filename .write (fun handle =>
     handle.putStr contents)
 
