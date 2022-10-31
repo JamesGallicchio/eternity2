@@ -14,7 +14,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   IO.FS.createDirAll "cnf"
   let tempFileName := s!"cnf/temp{←IO.rand 1 10000}.cnf"
   let (tsVars, enc) := EncCNF.new (do
-    let tsVars ← ColorCardinality.colorCardConstraints ts 9
+    let tsVars ← Constraints.colorCardConstraints ts 9
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
     return tsVars)
 
