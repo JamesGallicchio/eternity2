@@ -34,3 +34,17 @@ def TileSet.fromFile (filename : String) : IO TileSet := do
       match s.splitOn " " |>.map String.toNat? with
       | [some a, some b, some c, some d] => ⟨a,c,d,b,none⟩
       | _ => panic! s!"Bad input line {s}")
+
+structure TypedTileSet where
+  corner: TileSet
+  border: TileSet
+  center: TileSet
+
+def TileSet.splitToTypes : TileSet → TypedTileSet :=
+  List.foldr (fun t acc =>
+    if t.isCorner
+    then { acc with corner := t :: acc.corner }
+    else if t.isBorder
+    then { acc with border := t :: acc.border }
+    else { acc with center := t :: acc.center }
+  ) ⟨[], [], []⟩

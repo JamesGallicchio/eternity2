@@ -40,6 +40,24 @@ def eq (tile1 tile2 : Tile) :=
   rotate 0 || rotate 1 || rotate 2 || rotate 3
 where rotate n := Function.iterate rotl n tile1 == tile2
 
+def isCorner (tile : Tile) : Bool :=
+  ( tile.up == borderColor
+    && (tile.left == borderColor || tile.right == borderColor)) ||
+  ( tile.down == borderColor
+    && (tile.left == borderColor || tile.right == borderColor)
+  )
+
+def isBorder (tile : Tile) : Bool :=
+  !(isCorner tile) &&
+  ( tile.up == borderColor
+  || tile.down == borderColor
+  || tile.right == borderColor
+  || tile.left == borderColor
+  )
+
+def isCenter (tile : Tile) : Bool :=
+  !(isBorder tile) && !(isCorner tile)
+
 end Tile
 
 
