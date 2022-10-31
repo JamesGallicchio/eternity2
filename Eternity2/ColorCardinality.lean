@@ -9,7 +9,7 @@ open EncCNF
 for each color `0 < c ≤ k`, the `c`-colored triangles must be
 half `+` and half `-`.
 -/
-def colorCardConstraints (L : List Tile) (k : Nat) : EncCNF (List (Tile × Var)) := do
+def colorCardConstraints(L : List Tile) (k : Nat) : EncCNF (List (Tile × Var)) := do
   let varList ← L.foldrM (fun t rest => do
     let var ← mkVar s!"tile_sign{t.up}{t.right}{t.down}{t.left}"
     return (t,var) :: rest
@@ -23,8 +23,6 @@ def colorCardConstraints (L : List Tile) (k : Nat) : EncCNF (List (Tile × Var))
       ].join)
     let pos : Array Literal := Array.mk <| cVars.map (⟨·,false⟩)
     assert! (pos.size % 2 = 0) -- handshake lemma :)
-    let neg : Array Literal := pos.map (·.not)
     equalK pos (pos.size / 2)
-    equalK neg (pos.size / 2)
 
   return varList
