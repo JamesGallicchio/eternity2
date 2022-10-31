@@ -1,6 +1,6 @@
 c Eternity II edge matching puzzle: 16x16, with 16 colors
 
-p tile 16 16
+p tile 16 16 16
 
 1 0 0 17
 1 0 0 5
