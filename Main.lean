@@ -16,6 +16,8 @@ def signSols (ts : TileSet) : IO (List TileSet) := do
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
     return tsVars)
 
+  enc.printFileDIMACS "cnf/temp.cnf"
+
   let mut done := false
   let mut count := 0
   let mut sols := []
@@ -39,7 +41,6 @@ def signSols (ts : TileSet) : IO (List TileSet) := do
 
 
 def main : IO Unit := do
-  let ts ← genTileSet 7 7
-  TileSet.toFile "puzzles/rand7_7_7.txt" ts
-  let ts' ← TileSet.fromFile "puzzles/rand7_7_7.txt"
-  assert! (ts = ts')
+  let ts ← TileSet.fromFile "puzzles/rand7_7_7.txt"
+  let sols ← signSols ts
+  IO.println s!"{sols.length}"
