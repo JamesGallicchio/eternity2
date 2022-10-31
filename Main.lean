@@ -14,7 +14,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   IO.FS.createDirAll "cnf"
   let tempFileName := s!"cnf/temp{←IO.rand 1 10000}.cnf"
   let (tsVars, enc) := EncCNF.new (do
-    let tsVars ← Constraints.colorCardConstraints ts 9
+    let tsVars ← Constraints.colorCardConstraints ts.tiles 9
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
     return tsVars)
 
@@ -32,8 +32,10 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
     | none => done := true
     | some as =>
       count := count + 1
-      let sol := tsVars.map (fun (t,v) =>
-        {t with sign := as.find? v |>.map (fun | true => .plus | false => .minus)})
+      let sol :=
+        ⟨ tsVars.map (fun (t,v) =>
+            {t with sign := as.find? v |>.map (fun | true => .plus | false => .minus)})
+        , ts.size⟩
       sols := sol :: sols
       let newClause : EncCNF.Clause :=
         tsVars.map (fun (_,v) => ⟨v, as.find? v |>.get!⟩)
@@ -44,6 +46,12 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
 
 
 def main : IO Unit := do
-  let ts ← TileSet.fromFile "puzzles/rand6_6_6.txt"
-  let sols ← signSols ts
-  IO.println s!"sols: {sols.length}"
+  let iters := 100
+  let mut sizes := []
+  for _ in [0:iters] do
+    let ts ← genTileSet 4 4
+    let sols ← signSols ts (reportProgress := true)
+    IO.println s!"{sols.length}"
+    sizes := sols.length :: sizes
+  IO.println s!"{sizes}"
+

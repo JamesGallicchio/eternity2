@@ -104,7 +104,7 @@ instance : ToString (TileBoard size) where
       )
     |> String.intercalate "\n"
 
-def tileSet (tb : TileBoard size) : List Tile :=
+def tiles (tb : TileBoard size) : List Tile :=
   tb.board.foldr (·.toList ++ ·) []
 
 end TileBoard
