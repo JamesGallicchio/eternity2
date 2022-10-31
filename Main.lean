@@ -44,14 +44,34 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   IO.FS.removeFile tempFileName
   return sols
 
+section variable (size : Nat) (iters := 100) (reportProgress := true)
+
+def sampleSolutionCounts := do
+  let mut counts := []
+  let width := 80
+  IO.print ("[".pushn ' ' width ++ "]")
+  for i in [0:iters] do
+    if reportProgress then
+      let stars := (width * i + width / 2 + 1) / iters
+      IO.print ("\r[".pushn '*' stars |>.pushn ' ' (width-stars) |>.push ']')
+      (←IO.getStdout).flush
+    let ts ← genTileSet size size
+    let sols ← signSols ts
+    counts := sols.length :: counts
+
+  IO.println ""
+  return counts
+
+def printSolutionCountStats := do
+  let counts ← sampleSolutionCounts size
+  IO.println s!"counts: {counts}"
+  let avg := (counts.foldl (· + ·) (counts.length / 2)) / counts.length
+  let var := (counts.foldl (fun acc x => acc + (x - avg) * (x - avg)) (counts.length / 2)) / counts.length
+  IO.println s!"avg: {avg}"
+  IO.println s!"var: {var}"
+  IO.println s!"std: {Nat.sqrt var}"
+
+end
 
 def main : IO Unit := do
-  let iters := 100
-  let mut sizes := []
-  for _ in [0:iters] do
-    let ts ← genTileSet 4 4
-    let sols ← signSols ts (reportProgress := true)
-    IO.println s!"{sols.length}"
-    sizes := sols.length :: sizes
-  IO.println s!"{sizes}"
-
+  printSolutionCountStats 6
