@@ -4,6 +4,31 @@ namespace SATSolve
 
 open Std EncCNF
 
+@[extern "leancadical_initialize"] private opaque cadicalInit : IO Unit
+
+builtin_initialize cadicalInit
+
+opaque CadicalSolver.Pointed : NonemptyType.{0}
+
+def CadicalSolver := (CadicalSolver.Pointed).type
+
+namespace CadicalSolver
+
+instance : Nonempty CadicalSolver := CadicalSolver.Pointed.property
+
+@[extern "leancadical_new"]
+opaque new : Unit → CadicalSolver
+
+instance : Inhabited CadicalSolver := ⟨new ()⟩
+
+@[extern "leancadical_add_clause"]
+opaque addClause (C : CadicalSolver) (L : @& List Nat) : CadicalSolver
+
+@[extern "leancadical_solve"]
+opaque solve (C : CadicalSolver) : CadicalSolver × Option Bool
+
+end CadicalSolver
+
 def runCadical (cnfFile : String) : IO (Option (HashMap Var Bool)) := do
   -- Run cadical on cnfFile
   let out := (← IO.Process.output {
