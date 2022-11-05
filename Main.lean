@@ -1,6 +1,6 @@
 import Eternity2
 
-open Eternity2
+/-open Eternity2
 
 def genTileSet (size colors : Nat) : IO TileSet := do
   let b ← DiamondBoard.generate size colors
@@ -12,7 +12,7 @@ def fetchEternity2Tiles : IO TileSet :=
 
 def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet) := do
   IO.FS.createDirAll "cnf"
-  let tempFileName := s!"cnf/temp{←IO.rand 1 10000}.cnf"
+  let tempFileName := s!"cnf/temp{←IO.monoMsNow}{←IO.rand 1000 9999}.cnf"
   let (tsVars, enc) := EncCNF.new (do
     let tsVars ← Constraints.colorCardConstraints ts.tiles 9
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
@@ -49,7 +49,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
 
   if reportProgress then
     let duration := (←IO.monoMsNow) - start
-    IO.println s!"\rfound {count} solutions in {duration}ms ({(1000*count)/duration} / sec)"
+    IO.println s!"\rfound {count} solutions in {duration / 1000}.{duration % 10000}s ({(1000*count)/duration} / sec)"
     (←IO.getStdout).flush
   
   IO.FS.removeFile tempFileName
@@ -57,8 +57,8 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
 
 section variable (size : Nat) (iters := 100) (reportProgress := true)
 
-def sampleSolutionCounts := do
-  let mut counts := []
+def sampleSolutionCounts : IO (List Nat) := do
+  let counts : IO.Ref (List Nat) ← IO.mkRef []
   let width := 80
   IO.print ("[".pushn ' ' width ++ "]")
   for i in [0:iters] do
@@ -68,22 +68,42 @@ def sampleSolutionCounts := do
       (←IO.getStdout).flush
     let ts ← genTileSet size size
     let sols ← signSols ts
-    counts := sols.length :: counts
+    counts.modify (sols.length :: ·)
 
-  IO.println ""
-  return counts
+  IO.println <| "\r".pushn ' ' width
+  return ← counts.get
+
+def parSampleSolutionCounts (resfile : String) : IO Unit := do
+  parallel for i in [0:iters] do
+    let ts ← genTileSet size size
+    let sols ← signSols ts
+    IO.FS.withFile resfile .append (fun handle =>
+      handle.putStrLn s!"{sols.length}")
 
 def printSolutionCountStats := do
-  let counts ← sampleSolutionCounts size
+  let counts := 
+    (← sampleSolutionCounts size iters reportProgress)
+    |> Array.mk
+    |>.insertionSort (· < ·)
+  IO.println s!"size: {size}"
   IO.println s!"counts: {counts}"
-  let avg := (counts.foldl (· + ·) (counts.length / 2)) / counts.length
-  let var := (counts.foldl (fun acc x => acc + (x - avg) * (x - avg)) (counts.length / 2)) / counts.length
+  let avg := (counts.foldl (· + ·) (counts.size / 2)) / counts.size
+  let var := (counts.foldl (fun acc x => acc + (x - avg) * (x - avg)) (counts.size / 2)) / counts.size
+  let min := counts[0]!
+  let max := counts[counts.size-1]!
+  let median :=
+    (counts[counts.size / 2]! + counts[(counts.size+1) / 2]!) / 2
   IO.println s!"avg: {avg}"
   IO.println s!"var: {var}"
   IO.println s!"std: {Nat.sqrt var}"
+  IO.println s!"min: {min}"
+  IO.println s!"med: {median}"
+  IO.println s!"max: {max}"
 
 end
+-/
 
 def main : IO Unit := do
-  let ts ← genTileSet 6 6
-  let _ ← signSols ts (reportProgress := true)
+  let s := CadicalSolver.new ()
+  let (_, b) := s.solve
+  IO.print s!"{b}"
