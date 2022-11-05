@@ -4,7 +4,8 @@ namespace SATSolve
 
 open Std EncCNF
 
-@[extern "leancadical_initialize"] private opaque cadicalInit : IO Unit
+@[extern "leancadical_initialize"]
+private opaque cadicalInit : IO Unit
 
 builtin_initialize cadicalInit
 
@@ -17,7 +18,7 @@ namespace CadicalSolver
 instance : Nonempty CadicalSolver := CadicalSolver.Pointed.property
 
 @[extern "leancadical_new"]
-opaque new : Unit → CadicalSolver
+opaque new (u : @& Unit) : CadicalSolver
 
 instance : Inhabited CadicalSolver := ⟨new ()⟩
 

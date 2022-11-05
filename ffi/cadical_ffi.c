@@ -37,11 +37,11 @@ lean_obj_res leancadical_initialize()
 
 // Getting into/out of lean_obj*
 
-lean_obj_res leancadical_box(CCaDiCaL *solver) {
+static inline lean_obj_res leancadical_box(CCaDiCaL *solver) {
     return lean_alloc_external(leancadical_external_class, solver);
 }
 
-CCaDiCaL *leancadical_unbox(lean_obj_arg o) {
+static inline CCaDiCaL *leancadical_unbox(lean_obj_arg o) {
     return (CCaDiCaL*) (lean_get_external_data(o));
 }
 
@@ -65,7 +65,9 @@ static inline void leancadical_ensure_exclusive(lean_obj_arg a) {
 
 // Making a new solver
 
-lean_obj_res leancadical_new() {
+lean_obj_res leancadical_new(b_lean_obj_arg unit) {
+    assert (unit == lean_box(0));
+
     CCaDiCaL *solver = ccadical_init();
     return leancadical_box(solver);
 }
