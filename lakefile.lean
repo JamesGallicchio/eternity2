@@ -5,14 +5,10 @@ open Lake DSL
 def kissatDir : FilePath := "./kissat"
 
 package eternity2 {
-  moreLeancArgs := #[ "--verbose" ]
   moreLinkArgs := #[
-    "-v",
     "-L" ++ (kissatDir / "build").toString,
     "-I" ++ (kissatDir / "src").toString,
-    "-lkissat",
-    "-lstdc++"
-    --, "-Wl,--no-undefined"
+    "-lkissat"
   ]
 }
 

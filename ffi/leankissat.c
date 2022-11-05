@@ -8,6 +8,7 @@ Authors: James Gallicchio
 #include <string.h>
 #include <stdlib.h>
 #include <kissat.h>
+#include <stdio.h>
 
 /*
 Kissat C API shim to Lean
@@ -93,15 +94,17 @@ lean_obj_res leankissat_add_clause(lean_obj_arg s, b_lean_obj_arg L) {
 
         assert(lean_is_scalar(neg));
         assert(lean_unbox(neg) < 2);
+        bool isNeg = lean_unbox(neg);
 
         assert(lean_is_scalar(num));
         assert(0 < lean_unbox(num));
         assert(lean_unbox(num) < INT_MAX);
-
         size_t var = lean_unbox(num);
 
+        int signedVar = (isNeg ? -((int)var) : (int)var);
+
         // add literal to clause
-        kissat_add(solver, neg == 0 ? (int)var : -((int)var));
+        kissat_add(solver, signedVar);
 
         // move on to the tail
         L_ = lean_ctor_get(L_, 1);

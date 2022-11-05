@@ -79,13 +79,6 @@ def sampleSolutionCounts : IO (List Nat) := do
   IO.println <| "\r".pushn ' ' width
   return ← counts.get
 
-def parSampleSolutionCounts (resfile : String) : IO Unit := do
-  parallel for i in [0:iters] do
-    let ts ← genTileSet size size
-    let sols ← signSols ts
-    IO.FS.withFile resfile .append (fun handle =>
-      handle.putStrLn s!"{sols.length}")
-
 def printSolutionCountStats := do
   let counts := 
     (← sampleSolutionCounts size iters reportProgress)
