@@ -7,29 +7,29 @@ Authors: James Gallicchio
 #include <lean/lean.h>
 #include <string.h>
 #include <stdlib.h>
-#include <ccadical.h>
+#include <kissat.h>
 
 /*
-CaDiCaL C API shim to Lean
+Kissat C API shim to Lean
 */
 
 // Declare external class
 
-static lean_external_class* leancadical_external_class = NULL;
+static lean_external_class* leankissat_external_class = NULL;
 
-static inline void leancadical_finalizer(void *ptr)
+static inline void leankissat_finalizer(void *ptr)
 {
-    CCaDiCaL *solver = (CCaDiCaL *) ptr;
-    ccadical_release(solver);
+    kissat *solver = (kissat *) ptr;
+    kissat_release(solver);
     free(solver);
 }
 
-static inline void leancadical_foreach(void *mod, b_lean_obj_arg fn) {
+static inline void leankissat_foreach(void *mod, b_lean_obj_arg fn) {
 }
 
-lean_obj_res leancadical_initialize()
+lean_obj_res leankissat_initialize()
 {
-    leancadical_external_class = lean_register_external_class(leancadical_finalizer, leancadical_foreach);
+    leankissat_external_class = lean_register_external_class(leankissat_finalizer, leankissat_foreach);
     return lean_io_result_mk_ok(lean_box(0));
 }
 
@@ -37,17 +37,17 @@ lean_obj_res leancadical_initialize()
 
 // Getting into/out of lean_obj*
 
-static inline lean_obj_res leancadical_box(CCaDiCaL *solver) {
-    return lean_alloc_external(leancadical_external_class, solver);
+static inline lean_obj_res leankissat_box(kissat *solver) {
+    return lean_alloc_external(leankissat_external_class, solver);
 }
 
-static inline CCaDiCaL *leancadical_unbox(lean_obj_arg o) {
-    return (CCaDiCaL*) (lean_get_external_data(o));
+static inline kissat *leankissat_unbox(lean_obj_arg o) {
+    return (kissat*) (lean_get_external_data(o));
 }
 
 // Exclusivity checking
 
-static inline void leancadical_ensure_exclusive(lean_obj_arg a) {
+static inline void leankissat_ensure_exclusive(lean_obj_arg a) {
     if (LEAN_LIKELY(lean_is_exclusive(a)))
         return;
     
@@ -65,49 +65,60 @@ static inline void leancadical_ensure_exclusive(lean_obj_arg a) {
 
 // Making a new solver
 
-lean_obj_res leancadical_new(b_lean_obj_arg unit) {
+lean_obj_res leankissat_new(b_lean_obj_arg unit) {
     assert (unit == lean_box(0));
 
-    CCaDiCaL *solver = ccadical_init();
-    return leancadical_box(solver);
+    kissat *solver = kissat_init();
+    return leankissat_box(solver);
 }
 
 // Adding a clause to the solver
 
-lean_obj_res leancadical_add_clause(lean_obj_arg s, b_lean_obj_arg L) {
-    leancadical_ensure_exclusive(s);
-    CCaDiCaL *solver = leancadical_unbox(s);
+lean_obj_res leankissat_add_clause(lean_obj_arg s, b_lean_obj_arg L) {
+    leankissat_ensure_exclusive(s);
+    kissat *solver = leankissat_unbox(s);
 
     b_lean_obj_arg L_ = L;
 
     // While not nil,
     while (L_ != lean_box(0)) {
         // get the head
-        b_lean_obj_arg x = lean_ctor_get(L_, 0);
+        b_lean_obj_res x = lean_ctor_get(L_, 0);
 
-        // unpack
-        assert(lean_is_scalar(x));
-        assert(lean_unbox(x) <= INT_MAX);
+        assert(lean_is_ctor(x));
+        assert(lean_ctor_num_objs(x) == 2);
+        
+        b_lean_obj_res neg = lean_ctor_get(x, 0);
+        b_lean_obj_res num = lean_ctor_get(x, 1);
+
+        assert(lean_is_scalar(neg));
+        assert(lean_unbox(neg) < 2);
+
+        assert(lean_is_scalar(num));
+        assert(0 < lean_unbox(num));
+        assert(lean_unbox(num) < INT_MAX);
+
+        size_t var = lean_unbox(num);
 
         // add literal to clause
-        ccadical_add(solver, (int)lean_unbox(x));
+        kissat_add(solver, neg == 0 ? (int)var : -((int)var));
 
         // move on to the tail
         L_ = lean_ctor_get(L_, 1);
     }
 
-    ccadical_add(solver, 0);
+    kissat_add(solver, 0);
 
     return s;
 }
 
 // Asking solver to solve
 
-lean_obj_res leancadical_solve(lean_obj_arg s) {
-    leancadical_ensure_exclusive(s);
-    CCaDiCaL *solver = leancadical_unbox(s);
+lean_obj_res leankissat_solve(lean_obj_arg s) {
+    leankissat_ensure_exclusive(s);
+    kissat *solver = leankissat_unbox(s);
 
-    int r = ccadical_solve(solver);
+    int r = kissat_solve(solver);
 
     // return tuple (s,r)
     lean_obj_res res = lean_alloc_ctor(0,2,0);
@@ -131,17 +142,18 @@ lean_obj_res leancadical_solve(lean_obj_arg s) {
 // Getting values from solver
 // (note: assumes solver is in SAT state)
 
-lean_obj_res leancadical_value (b_lean_obj_arg s, b_lean_obj_arg n) {
-    CCaDiCaL *solver = leancadical_unbox(s);
+lean_obj_res leankissat_value (b_lean_obj_arg s, b_lean_obj_arg n) {
+    kissat *solver = leankissat_unbox(s);
 
-    //assert(ccadical_status(solver) == 10);
+    //assert(kissat_status(solver) == 10);
 
     assert(lean_is_scalar(n));
     int l = lean_unbox(n);
 
-    assert(0 < l && l <= INT_MAX);
+    assert(0 < l);
+    assert(l < INT_MAX);
 
-    int r = ccadical_val(solver, (int)lean_unbox(n));
+    int r = kissat_value(solver, (int)lean_unbox(n));
 
     lean_obj_res res;
     

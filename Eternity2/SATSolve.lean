@@ -4,55 +4,49 @@ namespace SATSolve
 
 open Std EncCNF
 
-@[extern "leancadical_initialize"]
-private opaque cadicalInit : IO Unit
+@[extern "leankissat_initialize"]
+private opaque kissatInit : IO Unit
 
-builtin_initialize cadicalInit
+builtin_initialize kissatInit
 
-opaque CadicalSolver.Pointed : NonemptyType.{0}
+opaque KissatSolver.Pointed : NonemptyType.{0}
 
-def CadicalSolver := (CadicalSolver.Pointed).type
+def KissatSolver := (KissatSolver.Pointed).type
 
-namespace CadicalSolver
+namespace KissatSolver
 
-instance : Nonempty CadicalSolver := CadicalSolver.Pointed.property
+instance : Nonempty KissatSolver := KissatSolver.Pointed.property
 
-@[extern "leancadical_new"]
-opaque new (u : @& Unit) : CadicalSolver
+@[extern "leankissat_new"]
+opaque new (_ : @& Unit) : KissatSolver
 
-instance : Inhabited CadicalSolver := ⟨new ()⟩
+instance : Inhabited KissatSolver := ⟨new ()⟩
 
-@[extern "leancadical_add_clause"]
-opaque addClause (C : CadicalSolver) (L : @& List Nat) : CadicalSolver
+/-- Add clause of the form `[(neg₁,num₁), ⋯, (negₖ,numₖ)]`, where
+literal `i` is the variable `numᵢ` and negated iff `negᵢ`. -/
+@[extern "leankissat_add_clause"]
+opaque addClause (C : KissatSolver) (L : @& List (Bool × Nat)) : KissatSolver
 
-@[extern "leancadical_solve"]
-opaque solve (C : CadicalSolver) : CadicalSolver × Option Bool
+@[extern "leankissat_solve"]
+opaque solve (C : KissatSolver) : KissatSolver × Option Bool
 
-end CadicalSolver
+@[extern "leankissat_value"]
+opaque value (C : @& KissatSolver) (i : @& Nat) : Option Bool
 
-def runCadical (cnfFile : String) : IO (Option (HashMap Var Bool)) := do
-  -- Run cadical on cnfFile
-  let out := (← IO.Process.output {
-    stdin := .piped
-    stdout := .piped
-    stderr := .piped
-    cmd := "cadical"
-    args := #[cnfFile, "--sat", "-f", "-q"]
-  }).stdout
-  let lines := out.splitOn "\n" |>.filter (not <| String.startsWith "c" ·)
-  match lines with
-  | "s SATISFIABLE" :: satis =>
-    return some (
-      satis
-      |>.filter (not <| ·.isEmpty)
-      |>.map (·.drop 2 |>.splitOn " ")
-      |>.join
-      |>.map (·.toInt!)
-      |>.filter (· ≠ 0)
-      |>.foldl (fun acc i =>
-          acc.insert (Int.natAbs i - 1) (i > 0)
-        ) (HashMap.empty)
-    )
-  | "s UNSATISFIABLE" :: _ => return none
-  | out =>
-    panic! s!"failed to parse output ({out.length} lines):\n{out.take 3}\n..."
+end KissatSolver
+
+set_option compiler.extract_closed false in
+def solve (e : State) (varsToGet : List Var) : Option (HashMap Var Bool) :=
+  let s := e.clauses.foldl (fun s clause =>
+      s.addClause <| clause.map (fun l => (l.neg, l.var+1))
+    ) (KissatSolver.new ())
+  match s.solve with
+  | (_, none) => panic! "Something went wrong running kissat"
+  | (_, some false) => none
+  | (s, some true) => some <|
+    varsToGet.foldl (fun map v =>
+        match s.value (v+1) with
+        | none => map
+        | some true  => map.insert v true
+        | some false => map.insert v false
+      ) HashMap.empty

@@ -1,43 +1,36 @@
 import Lake
 open Lake DSL
 
-/-- The directory where cadical source will be cloned/maintained -/
-def cadicalDir : FilePath := "./cadical"
+/-- The directory where kissat source will be cloned/maintained -/
+def kissatDir : FilePath := "./kissat"
 
 package eternity2 {
   moreLeancArgs := #[ "--verbose" ]
   moreLinkArgs := #[
-    "-L" ++ (cadicalDir / "build").toString,
-    "-I" ++ (cadicalDir / "src").toString,
-    "-lcadical",
+    "-v",
+    "-L" ++ (kissatDir / "build").toString,
+    "-I" ++ (kissatDir / "src").toString,
+    "-lkissat",
     "-lstdc++"
+    --, "-Wl,--no-undefined"
   ]
 }
 
 lean_lib Eternity2
 
-target leancadical.o (pkg : Package) : FilePath := do
-  let oFile := pkg.buildDir / "c" / "leancadical.o"
-  let srcFile ← inputFile <| pkg.dir / "ffi" / "cadical_ffi.c"
+target leankissat.o (pkg : Package) : FilePath := do
+  let oFile := pkg.buildDir / "c" / "leankissat.o"
+  let srcFile ← inputFile <| pkg.dir / "ffi" / "leankissat.c"
   buildFileAfterDep oFile srcFile fun srcFile => do
     let flags := #[
       "-I" ++ (← getLeanIncludeDir).toString,
-      "-I" ++ (cadicalDir / "src").toString,
+      "-I" ++ (kissatDir / "src").toString,
       "-O3", "-fPIC"]
-    compileO "cadical_ffi.c" oFile srcFile flags "clang"
+    compileO "leankissat.c" oFile srcFile flags
 
-extern_lib libleancadical (pkg : Package) := do
-  -- copy libcadical.so into build/lib
-  IO.FS.createDirAll (pkg.buildDir / "lib")
-  proc {
-    cmd := "cp"
-    args := #[
-      (cadicalDir / "build" / "libcadical.a").toString,
-      (pkg.buildDir / "lib" / "libcadical.a").toString ]
-  }
-
-  let name := nameToStaticLib "leancadical"
-  let ffiO ← fetch <| pkg.target ``leancadical.o
+extern_lib libleankissat (pkg : Package) := do
+  let name := nameToStaticLib "leankissat"
+  let ffiO ← fetch <| pkg.target ``leankissat.o
   buildStaticLib (pkg.buildDir / "lib" / name) #[ffiO]
 
 
@@ -50,60 +43,60 @@ require std from git
   "https://github.com/JamesGallicchio/std4" @ "iterators"
 
 script setup _args := do  
-  if !( (← cadicalDir.pathExists)) then
-    IO.println s!"Setting up cadical in new directory: {cadicalDir}"
+  if !( (← kissatDir.pathExists)) then
+    IO.println s!"Setting up kissat in new directory: {kissatDir}"
     let child ← IO.Process.spawn {
       cmd := "git"
-      args := #["clone", "https://github.com/arminbiere/cadical"]
+      args := #["clone", "https://github.com/arminbiere/kissat"]
     }
     if (← child.wait) ≠ 0 then
-      IO.println "Error while cloning cadical, canceling setup"
+      IO.println "Error while cloning kissat, canceling setup"
       return 1
 
-  else if !( (← (cadicalDir/".git").pathExists) ) then
-    IO.println "Directory for cadical exists, but doesn't have a git repo?"
-    IO.println cadicalDir
+  else if !( (← (kissatDir/".git").pathExists) ) then
+    IO.println "Directory for kissat exists, but doesn't have a git repo?"
+    IO.println s!"(try `rmdir {kissatDir})"
     return 1
 
   else
-    IO.println "Updating cadical..."
+    IO.println "Updating kissat..."
     let child ← IO.Process.spawn {
       cmd := "git"
       args := #["pull"]
-      cwd := some cadicalDir
+      cwd := some kissatDir
     }
     if (← child.wait) ≠ 0 then
-      IO.println "Error while pulling cadical?"
+      IO.println "Error while pulling kissat"
       return 1
 
-  if (← (cadicalDir / "makefile").pathExists) then
-    IO.println "Removing old cadical build..."
+  if (← (kissatDir / "makefile").pathExists) then
+    IO.println "Cleaning kissat build..."
     let child ← IO.Process.spawn {
       cmd := "make"
       args := #[ "clean" ]
-      cwd := cadicalDir
+      cwd := kissatDir
     }
     if (← child.wait) ≠ 0 then
       IO.println "make clean failed?"
       return 1
 
-  IO.println "Configuring cadical makefile..."
+  IO.println "Configuring kissat makefile..."
   let child ← IO.Process.spawn {
     cmd := s!"./configure"
-    args := #["CXX=clang++", "CXXFLAGS=-stdlib=libstdc++", "-fPIC"]
-    cwd := cadicalDir
+    args := #["-fPIC"]
+    cwd := kissatDir
   }
   if (← child.wait) ≠ 0 then
-    IO.println "Error configuring cadical makefiles"
+    IO.println "Error configuring kissat makefiles"
     return 1
 
-  IO.println "Building cadical..."
+  IO.println "Building kissat..."
   let child ← IO.Process.spawn {
     cmd := "make"
-    cwd := cadicalDir
+    cwd := kissatDir
   }
   if (← child.wait) ≠ 0 then
-    IO.println "Error building cadical"
+    IO.println "Error building kissat"
     return 1
 
   return 0
