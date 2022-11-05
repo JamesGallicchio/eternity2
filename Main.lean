@@ -2,8 +2,8 @@ import Eternity2
 
 open Eternity2
 
-def genTileSet (size colors : Nat) : IO TileSet := do
-  let b ← DiamondBoard.generate size colors colors
+def genTileSet (size coreColors edgeColors : Nat) : IO TileSet := do
+  let b ← DiamondBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b false
   IO.println t
   return t.tileSet
@@ -67,7 +67,7 @@ def sampleSolutionCounts := do
       let stars := (width * i + width / 2 + 1) / iters
       IO.print ("\r[".pushn '*' stars |>.pushn ' ' (width-stars) |>.push ']')
       (←IO.getStdout).flush
-    let ts ← genTileSet size size
+    let ts ← genTileSet size (size + 1) (Nat.sqrt size + 1)
     let sols ← signSols ts
     counts := sols.length :: counts
 
@@ -86,5 +86,5 @@ def printSolutionCountStats := do
 end
 
 def main : IO Unit := do
-  let ts ← genTileSet 4 5
+  let ts ← genTileSet 6 7 3
   let _ ← signSols ts (reportProgress := true)

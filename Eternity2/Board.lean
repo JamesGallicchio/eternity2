@@ -202,7 +202,10 @@ def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoa
 
     let mut pickColor := true
     while pickColor do
-      let c ← IO.rand (borderColor.get! + 1) coreColors
+      let c ← IO.rand (borderColor.get! + 1) <|
+        if i == 0 || i == (a.size - 1) || j == 0 || j == (a[i]!.size - 1)
+        then edgeColors
+        else coreColors
       a := a.set! i <| (a.get! i).set! j (⟨some c, sorry⟩ : Diamond)
       let dboard : DiamondBoard size := DiamondBoard.mk a sorry sorry false sorry
       pickColor := not (isLegal dboard)
