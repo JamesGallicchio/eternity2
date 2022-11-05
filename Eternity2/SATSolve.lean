@@ -44,9 +44,10 @@ def solve (e : State) (varsToGet : List Var) : Option (HashMap Var Bool) :=
   | (_, none) => panic! "Something went wrong running kissat"
   | (_, some false) => none
   | (s, some true) => some <|
-    varsToGet.foldl (fun map v =>
-        match s.value (v+1) with
+    let res := varsToGet.foldl (fun map v =>
+        match s.value (v.succ) with
         | none => map
         | some true  => map.insert v true
         | some false => map.insert v false
       ) HashMap.empty
+    res

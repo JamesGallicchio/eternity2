@@ -21,7 +21,6 @@ static inline void leankissat_finalizer(void *ptr)
 {
     kissat *solver = (kissat *) ptr;
     kissat_release(solver);
-    free(solver);
 }
 
 static inline void leankissat_foreach(void *mod, b_lean_obj_arg fn) {
@@ -69,6 +68,7 @@ lean_obj_res leankissat_new(b_lean_obj_arg unit) {
     assert (unit == lean_box(0));
 
     kissat *solver = kissat_init();
+    kissat_set_option(solver, "quiet", 1);
     return leankissat_box(solver);
 }
 
@@ -153,16 +153,18 @@ lean_obj_res leankissat_value (b_lean_obj_arg s, b_lean_obj_arg n) {
     assert(0 < l);
     assert(l < INT_MAX);
 
-    int r = kissat_value(solver, (int)lean_unbox(n));
+    int r = kissat_value(solver, (int)l);
 
     lean_obj_res res;
     
     if (r == l) {
         res = lean_alloc_ctor(1,1,0);
         lean_ctor_set(res, 0, lean_box(1));
+        lean_inc(res);
     } else if (r == -l) {
         res = lean_alloc_ctor(1,1,0);
         lean_ctor_set(res, 0, lean_box(0));
+        lean_inc(res);
     } else {
         res = lean_box(0);
     }

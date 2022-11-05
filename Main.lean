@@ -26,6 +26,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   let mut done := false
   let mut count := 0
   let mut sols := []
+  let mut enc' := enc
 
   let start ← IO.monoMsNow
   let mut lastUpdateTime := 0
@@ -37,7 +38,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
       IO.print s!"\rfound {count} ({count*1000/(now-start)} / sec)"
       (←IO.getStdout).flush
 
-    match SATSolve.solve enc tsVars' with
+    match SATSolve.solve enc' tsVars' with
     | none => done := true
     | some as =>
       count := count + 1
@@ -49,6 +50,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
       let newClause : EncCNF.Clause :=
         tsVars.map (fun (_,v) => ⟨v, as.find? v |>.get!⟩)
       enc.appendFileDIMACSClause tempFileName newClause
+      enc' := EncCNF.run enc' (EncCNF.addClause newClause) |>.2
 
   if reportProgress then
     let duration := (←IO.monoMsNow) - start
@@ -105,6 +107,7 @@ def printSolutionCountStats := do
 
 end
 
+set_option compiler.extract_closed false in
 def main : IO Unit := do
   let ts ← genTileSet 6 6
   let _ ← signSols ts (reportProgress := true)
