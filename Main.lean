@@ -2,9 +2,10 @@ import Eternity2
 
 open Eternity2
 
-def genTileSet (size colors : Nat) : IO TileSet := do
-  let b ← DiamondBoard.generate size colors
+def genTileSet (size coreColors edgeColors : Nat) : IO TileSet := do
+  let b ← DiamondBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b false
+  IO.println t
   return t.tileSet
 
 def fetchEternity2Tiles : IO TileSet :=
@@ -56,7 +57,7 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
     let duration := (←IO.monoMsNow) - start
     IO.println s!"\rfound {count} solutions in {duration / 1000}.{duration % 10000}s ({(1000*count)/duration} / sec)"
     (←IO.getStdout).flush
-  
+
   IO.FS.removeFile tempFileName
   return sols
 
@@ -71,7 +72,7 @@ def sampleSolutionCounts : IO (List Nat) := do
       let stars := (width * i + width / 2 + 1) / iters
       IO.print ("\r[".pushn '*' stars |>.pushn ' ' (width-stars) |>.push ']')
       (←IO.getStdout).flush
-    let ts ← genTileSet size size
+    let ts ← genTileSet size (size + 1) (Nat.sqrt size + 1)
     let sols ← signSols ts
     counts.modify (sols.length :: ·)
 
@@ -109,5 +110,5 @@ end
 
 set_option compiler.extract_closed false in
 def main : IO Unit := do
-  let ts ← genTileSet 6 6
+  let ts ← genTileSet 6 7 3
   let _ ← signSols ts (reportProgress := true)
