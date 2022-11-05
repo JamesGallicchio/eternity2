@@ -3,8 +3,12 @@ import Eternity2.AuxDefs
 namespace Eternity2
 
 @[reducible]
-def Color := Nat
-def borderColor : Color := 0
+def Color := Option Nat
+def Color.toString : Color → String
+| none => "X"
+| some c => s!"{c}"
+
+def borderColor : Color := some 0
 
 inductive Sign
 | plus  : Sign
@@ -27,7 +31,7 @@ def toString (tile : Tile) :=
     match tile.sign with
       | none => " "
       | some s => Sign.toString s
-  s!"┌{tile.up}┐\n{tile.left}{signage}{tile.right}\n└{tile.down}┘"
+  s!"┌{tile.up.toString}┐\n{tile.left.toString}{signage}{tile.right.toString}\n└{tile.down.toString}┘"
 
 
 instance: ToString Tile where
@@ -39,6 +43,10 @@ def rotl : Tile → Tile
 def eq (tile1 tile2 : Tile) :=
   rotate 0 || rotate 1 || rotate 2 || rotate 3
 where rotate n := Function.iterate rotl n tile1 == tile2
+
+def hasColor (tile : Tile) (color : Color) : Bool :=
+     tile.up   == color || tile.down  == color
+  || tile.left == color || tile.right == color
 
 def isCorner (tile : Tile) : Bool :=
   ( tile.up == borderColor
@@ -84,12 +92,16 @@ def Diamond := {c : Color // c ≠ borderColor}
 deriving Repr
 
 instance : Inhabited Diamond where
-  default := ⟨1, by decide⟩
+  default := ⟨some 1, by decide⟩
 
 structure TileBoard (size : Nat) where
   board : Array (Array Tile)
   board_size :
     board.size = size ∧ ∀ i, (h : i < board.size) → board[i].size = size
+  isFinalized: Bool
+  finalize: isFinalized →
+    ∀ i, (h : i < board.size) → ∀ j, (h' : j < board[i].size) →
+      not (board[i][j].hasColor none)
 
 namespace TileBoard
 
@@ -116,6 +128,10 @@ structure DiamondBoard (size : Nat) where
     if i % 2 = 0
     then board[i].size = size - 1
     else board[i].size = size
+  isFinalized: Bool
+  finalize: isFinalized →
+    ∀ i, (h : i < board.size) → ∀ j, (h' : j < board[i].size) →
+      board[i][j].val != none
 
 namespace DiamondBoard
 
@@ -150,17 +166,47 @@ def tileBoard (dboard : DiamondBoard size) (checker : Bool) : TileBoard size := 
                 (if checker then
                   some (if (i+j) % 2 = 0 then .plus else .minus)
                 else none)
-  return TileBoard.mk a sorry
+  return TileBoard.mk a sorry dboard.isFinalized sorry
+
+def isLegal (dboard : DiamondBoard size) : Bool :=
+  tileBoard dboard false
+  |>.tiles
+  |> List.filter (fun t => t.hasColor none |> not)
+  |> (fun tiles =>
+        List.foldr (fun t (acc, legal) =>
+          if not (legal) || (List.find? (fun t' => Tile.eq t t') acc |>.isSome)
+          then (acc, false)
+          else (t::acc, legal)
+        ) ([], true) tiles
+     )
+  |> (fun (_, legal) => legal)
+
+def hasUnColored (board : Array (Array Diamond)) : Bool :=
+  board.any (fun row => row.any (fun c => c.val.isNone))
 
 /-- `size`x`size` board with `colors` colors assigned randomly. -/
-def generate (size : Nat) (colors : Nat) : IO (DiamondBoard size) := do
+def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoard size) := do
   let mut a := Array.mkEmpty (2 * size - 1)
   for i in [0:2*size - 1] do
     let len := if i % 2 = 0 then (size - 1) else size
     a := a.push (Array.mkEmpty len)
     for j in [0:len] do
-      let color ← IO.rand (borderColor + 1) colors
-      a := a.set! i <| (a.get! i).push (⟨color, sorry⟩ : Diamond)
-  return DiamondBoard.mk a sorry sorry
+      a := a.set! i <| (a.get! i).push (⟨none, sorry⟩ : Diamond)
+
+  while hasUnColored a do
+    let i ← IO.rand 0 (a.size - 1)
+    let j ← IO.rand 0 (a[i]!.size - 1)
+
+    if a[i]![j]!.val.isSome
+    then continue
+
+    let mut pickColor := true
+    while pickColor do
+      let c ← IO.rand (borderColor.get! + 1) coreColors
+      a := a.set! i <| (a.get! i).set! j (⟨some c, sorry⟩ : Diamond)
+      let dboard : DiamondBoard size := DiamondBoard.mk a sorry sorry false sorry
+      pickColor := not (isLegal dboard)
+
+  return DiamondBoard.mk a sorry sorry true sorry
 
 end DiamondBoard

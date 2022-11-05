@@ -15,6 +15,7 @@ def colorCardConstraints(L : List Tile) (k : Nat) : EncCNF (List (Tile × Var)) 
     return (t,var) :: rest
     ) []
   for c in [1:k+1] do
+    let c := some c
     let border_cVars := varList.bind (fun (t,var) =>
       t.getBorderColors.filter (fun c' => c = c')|>.map (fun _ => var))
     let center_cVars := varList.bind (fun (t,var) =>

@@ -18,13 +18,15 @@ def toFile (filename : String) (ts : TileSet) : IO Unit := do
   let size := Nat.sqrt ts.tiles.length
   let numColors :=
     ts.tiles.foldl (fun acc ⟨a,b,c,d,_⟩ =>
-        [a,b,c,d].foldl (fun acc x => if x ≠ 0 then acc.insert x () else acc) acc
+        [a,b,c,d].foldl (fun acc x => if x ≠ borderColor then acc.insert x () else acc) acc
       ) (HashMap.empty)
     |>.size
   let contents :=
     s!"p tile {size} {size} {numColors}\n" ++
-    String.intercalate "\n" (ts.tiles.map (fun ⟨u,d,l,r,_⟩ => s!"{u} {r} {d} {l}")) ++
-    "\n"
+    String.intercalate "\n"
+      ( ts.tiles.map (fun ⟨u,d,l,r,_⟩ =>
+          s!"{u.get!} {r.get!} {d.get!} {l.get!}")
+      ) ++ "\n"
   IO.FS.withFile filename .write (fun handle =>
     handle.putStr contents)
 
