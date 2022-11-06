@@ -66,6 +66,10 @@ def isBorder (tile : Tile) : Bool :=
 def isCenter (tile : Tile) : Bool :=
   !(isBorder tile) && !(isCorner tile)
 
+def colors : Tile → List Color
+| ⟨up, down, left, right,_⟩ =>
+  [up,down,left,right]
+
 def getBorderColors (tile : Tile) : List Color :=
   if tile.isCenter then []
   else if tile.isBorder then

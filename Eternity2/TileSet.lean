@@ -7,12 +7,15 @@ open Std
 structure TileSet where
   tiles : List Tile
   size : Nat
+  colors : Nat
 deriving Inhabited, DecidableEq
 
-def TileBoard.tileSet (tb : TileBoard size) : TileSet :=
-  ⟨tb.tiles, size⟩
+def TileBoard.tileSet (tb : TileBoard size) (colors : Nat) : TileSet :=
+  ⟨tb.tiles, size, colors⟩
 
 namespace TileSet
+
+def unique (ts : TileSet) : Prop := ∀ t1 t2, t1 ∈ ts.tiles → t2 ∈ ts.tiles → ¬ (t1.eq t2)
 
 def toFile (filename : String) (ts : TileSet) : IO Unit := do
   let size := Nat.sqrt ts.tiles.length
@@ -48,13 +51,16 @@ def fromFile (filename : String) : IO TileSet := do
     | ["p", "tile", w, h, _] =>
       if w = h then String.toNat! w else panic! "Not a square (currently unsupported)"
     | _ => panic! s!"Incorrectly formatted p line: {pline}"
-  return rest
+
+  let tiles := rest
     |>.filter (!·.all Char.isWhitespace)
     |>.map (fun s =>
       match s.splitOn " " |>.map String.toNat? with
       | [some a, some b, some c, some d] => ⟨a,c,d,b,none⟩
       | _ => panic! s!"Bad input line {s}")
-    |> (⟨·,size⟩)
+
+  return ⟨tiles,size, tiles.map (fun t =>
+    t.colors.filterMap id) |>.join.maximum?.getD 0⟩
 
 def toString (ts : TileSet) : String :=
   ts.tiles.map (·.toString)
