@@ -6,14 +6,12 @@ def genTileSet (size coreColors edgeColors : Nat) : IO TileSet := do
   let b ← DiamondBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b false
   IO.println t
-  return t.tileSet
+  return t.tileSet coreColors
 
 def fetchEternity2Tiles : IO TileSet :=
   TileSet.fromFile "puzzles/e2pieces.txt"
 
 def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet) := do
-  IO.FS.createDirAll "cnf"
-  let tempFileName := s!"cnf/temp{←IO.rand 1 10000}.cnf"
   let (tsVars, enc) := EncCNF.new (do
     let tsVars ← Constraints.colorCardConstraints ts.tiles 9
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
@@ -22,44 +20,12 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   -- Need a plain list of variables to check each time we solve
   let tsVars' := tsVars.map (·.2)
 
-  enc.printFileDIMACS tempFileName
-
-  let mut count := 0
-  let mut sols := []
-  let mut satResult := SATSolve.solve enc tsVars'
-
-  let start ← IO.monoMsNow
-  let mut lastUpdateTime := 0
-
-  while satResult.isSome do
-    let now ← IO.monoMsNow
-    if reportProgress && now - lastUpdateTime > 2000 then
-      lastUpdateTime := now
-      IO.print s!"\rfound {count} ({count*1000/(now-start)} / sec)"
-      (←IO.getStdout).flush
-
-    match satResult with
-    | none => panic! "Unreachable :( 12509814"
-    | some (s, assn) =>
-      count := count + 1
-      let sol :=
-        ⟨ tsVars.map (fun (t,v) =>
-            {t with sign := assn.find? v |>.map (fun | true => .plus | false => .minus)})
-        , ts.size⟩
-      sols := sol :: sols
-      let newClause : EncCNF.Clause :=
-        tsVars.map (fun (_,v) => ⟨v, assn.find? v |>.get!⟩)
-      enc.appendFileDIMACSClause tempFileName newClause
-
-      satResult := SATSolve.addAndResolve s newClause tsVars'
-
-  if reportProgress then
-    let duration := (←IO.monoMsNow) - start
-    IO.println s!"\rfound {count} solutions in {duration}ms ({(1000*count)/duration} / sec)"
-    (←IO.getStdout).flush
-
-  IO.FS.removeFile tempFileName
-  return sols
+  return (← SATSolve.allSols enc tsVars' reportProgress)
+    |>.map fun sol =>
+      ⟨ tsVars.map (fun (t,v) =>
+            {t with sign := sol.find? v |>.map (fun | true => .plus | false => .minus)})
+      , ts.size
+      , ts.colors⟩
 
 section variable (size : Nat) (iters := 100) (reportProgress := true)
 
@@ -91,5 +57,37 @@ def printSolutionCountStats := do
 end
 
 def main : IO Unit := do
-  let ts ← genTileSet 6 7 3
-  let _ ← signSols ts (reportProgress := true)
+  let ts ← genTileSet 2 3 3
+  IO.println ts
+  match EncCNF.new do
+    Constraints.puzzleConstraints ts
+  with
+  | (.error s, _) => IO.println s!"failed to generate encoding: {s}"
+  | (.ok tsv, enc) =>
+  let pVars :=
+    List.fins _ |>.bind fun p =>
+    List.fins _ |>.bind fun r =>
+    List.fins _ |>.map fun c =>
+    tsv.piece_vars p ⟨r,c⟩
+  let dVars :=
+    Constraints.DiamondIndex.all _ |>.bind fun d =>
+    List.fins _ |>.map fun i =>
+    tsv.diamond_vars d i
+  let sol := SATSolve.solve enc pVars
+  match sol with
+  | none =>
+  IO.println "unsat"
+  | some (_, assn) =>
+  let board : TileBoard 3 := {
+    board := Array.init _ fun r =>
+      Array.init _ fun c =>
+        List.fins _
+        |>.find? (fun p => assn.findD (tsv.piece_vars p ⟨r,c⟩) false)
+        |> (fun
+          | none => ⟨none, none, none, none, none⟩
+          | some p => ts.tiles[p]!)
+    board_size := sorry
+    isFinalized := true
+    finalize := sorry
+  }
+  IO.println board

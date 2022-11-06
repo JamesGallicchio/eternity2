@@ -11,13 +11,14 @@ open Std EncCNF
 structure SquareIndex (size : Nat) where
   row : Fin size
   col : Fin size
+deriving Repr
 
 inductive DiamondIndex (psize : Nat) where
 /-- col refers to the left triangle's column -/
 | horz (row : Fin psize.succ) (col : Fin psize)
 /-- row refers to the top triangle's row -/
 | vert (row : Fin psize) (col : Fin psize.succ)
-
+deriving Repr
 
 namespace SquareIndex
 
@@ -34,6 +35,27 @@ def toFin : SquareIndex size → Fin (size * size)
   exact hj⟩
 
 private def maxIdx {psize : Nat} : Fin psize.succ := ⟨psize, Nat.lt_succ_self _⟩
+
+def dUp : SquareIndex psize.succ → Option (DiamondIndex psize)
+| ⟨⟨0,_⟩,_⟩   => none
+| ⟨⟨i+1,h⟩,j⟩ => some <| .vert ⟨i, Nat.lt_of_succ_lt_succ h⟩ j
+
+def dLeft : SquareIndex psize.succ → Option (DiamondIndex psize)
+| ⟨_,⟨0,_⟩⟩   => none
+| ⟨i,⟨j+1,h⟩⟩ => some <| .horz i ⟨j, Nat.lt_of_succ_lt_succ h⟩
+
+def dDown : SquareIndex psize.succ → Option (DiamondIndex psize)
+| ⟨⟨i,_⟩,j⟩ =>
+  if h : i < psize then
+    some <| .vert ⟨i, h⟩ j
+  else none
+
+def dRight : SquareIndex psize.succ → Option (DiamondIndex psize)
+| ⟨i,⟨j,_⟩⟩ =>
+  if h : j < psize then
+    some <| .horz i ⟨j, h⟩
+  else none
+
 private def middleFins (psize : Nat) : List (Fin psize.succ) :=
   forIn (m := Id) [1:psize] [] (fun x y => .yield (.ofNat x :: y))
 
@@ -97,6 +119,12 @@ private def middleFins (psize : Nat) : List (Fin psize.succ) :=
 private def minorFins (psize : Nat) : List (Fin psize) :=
   forIn' (m := Id) [0:psize] [] (fun x h y => .yield (⟨x,by exact h.2⟩ :: y))
 
+def all (psize : Nat) : List (DiamondIndex psize) :=
+  majorFins psize |>.bind fun i =>
+    minorFins psize |>.bind fun j =>
+      [ .horz i j
+      , .vert j i ]
+
 def border (psize : Nat) : List (DiamondIndex psize) :=
   minorFins psize |>.bind fun i =>
     [ .horz 0 i
@@ -113,10 +141,10 @@ def center (psize : Nat) : List (DiamondIndex psize) :=
 end DiamondIndex
 
 structure TileSetVariables (psize : Nat) (colors : Nat) where
-  ts : TileSet
-  h_ts : ts.tiles.length = psize.succ * psize.succ
-  h_colors : ts.tiles.all (·.colors.all (·.all (· ≤ colors)))
-  h_ts_uniq : ts.unique
+  tiles : List Tile
+  h_ts : tiles.length = psize.succ * psize.succ
+  h_colors : tiles.all (·.colors.all (·.all (· ≤ colors)))
+  h_ts_uniq : tiles.isDistinct
   piece_vars : Fin (psize.succ * psize.succ) → SquareIndex psize.succ → Var
   /-- color 0 here is color 1 elsewhere -/
   diamond_vars : DiamondIndex psize → Fin colors → Var
@@ -125,26 +153,26 @@ private def tileIndices (psize : Nat) : List (Fin (psize.succ * psize.succ)) :=
   forIn (m := Id) [0:psize.succ * psize.succ] [] (fun x y => .yield (.ofNat x :: y))
 
 private def cornerTiles (tsv : TileSetVariables s c) := tileIndices s |>.filterMap (fun i =>
-  let i' : Fin tsv.ts.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-  let tile := tsv.ts.tiles[i']
+  let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+  let tile := tsv.tiles[i']
   if tile.isCorner then some (tile,i) else none)
 private def borderTiles (tsv : TileSetVariables s c) := tileIndices s |>.filterMap (fun i =>
-  let i' : Fin tsv.ts.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-  let tile := tsv.ts.tiles[i']
+  let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+  let tile := tsv.tiles[i']
   if tile.isBorder then some (tile,i) else none)
 private def centerTiles (tsv : TileSetVariables s c) := tileIndices s |>.filterMap (fun i =>
-  let i' : Fin tsv.ts.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-  let tile := tsv.ts.tiles[i']
+  let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+  let tile := tsv.tiles[i']
   if tile.isCenter then some (tile,i) else none)
 
-def mkVars (ts : TileSet) (psize colors : Nat)
-  (h_ts : ts.tiles.length = psize.succ * psize.succ)
-  (h_colors : ts.tiles.all (·.colors.all (·.all (· ≤ colors))))
-  (h_uniq : ts.unique)
+def mkVars (tiles : List Tile) (psize colors : Nat)
+  (h_ts : tiles.length = psize.succ * psize.succ)
+  (h_colors : tiles.all (·.colors.all (·.all (· ≤ colors))))
+  (h_uniq : tiles.isDistinct)
   : EncCNF (TileSetVariables psize colors) := do
   let pvs ← EncCNF.mkVarBlock "x" [psize.succ*psize.succ, psize.succ*psize.succ]
   let dvs ← EncCNF.mkVarBlock "y" [2 * (psize * psize.succ), colors]
-  return ⟨ts, h_ts, h_colors, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
+  return ⟨tiles, h_ts, h_colors, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
 
 def pieceConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := do
   match psize with
@@ -171,22 +199,19 @@ def pieceConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := do
   for (_,p) in centerTiles tsv do
     EncCNF.addClause (SquareIndex.center psize |>.map (tsv.piece_vars p ·.1))
 
-def unique [DecidableEq α] (L : List α) : List α :=
-  L.foldl (·.insert ·) []
-
 def diamondConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := do
   let borderColors : List (Fin colors) :=
-      tsv.ts.tiles.bind (·.getBorderColors) |>.filterMap (fun
+      tsv.tiles.bind (·.getBorderColors) |>.filterMap (fun
         | none => none
         | some 0 => none
         | some (.succ i) => if h : i < colors then some ⟨i,h⟩ else none
-      ) |> unique
+      ) |>.distinct
   let centerColors : List (Fin colors) :=
-      tsv.ts.tiles.bind (·.getCenterColors) |>.filterMap (fun
+      tsv.tiles.bind (·.getCenterColors) |>.filterMap (fun
         | none => none
         | some 0 => none
         | some (.succ i) => if h : i < colors then some ⟨i,h⟩ else none
-      ) |> unique
+      ) |>.distinct
 
   /- Each diamond has exactly one color -/
   for d in DiamondIndex.border psize do
@@ -225,13 +250,13 @@ private def classify (colors : Nat) (t : Tile) (h : t.colors.all (·.all (· ≤
   | ⟨_, none, _, _, _⟩
   | ⟨_, _, none, _, _⟩
   | ⟨_, _, _, none, _⟩ => panic! "unreachable 290581052"
-  | ⟨some u, some r, some d, some l, _⟩ =>
+  | ⟨some u, some d, some r, some l, _⟩ =>
   /- rotate to put color at u, border at l (if possible) -/
   match u,r,d,l with
   | 0, 0, 0, 0
   | _+1, 0, 0, 0 | 0, _+1, 0, 0 | 0, 0, _+1, 0 | 0, 0, 0, _+1
   | 0, _+1, 0, _+1 | _+1, 0, _+1, 0
-     => panic! "unreachable 32960845"
+     => panic! t.toString
   | u+1, r+1, 0, 0
   | 0, u+1, r+1, 0
   | 0, 0, u+1, r+1
@@ -283,8 +308,8 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
   | psize+1, colors+1 =>
   for _h : i in tileIndices psize.succ do
     match
-      let i' : Fin tsv.ts.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-      classify colors tsv.ts.tiles[i'] sorry
+      let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+      classify colors tsv.tiles[i'] sorry
     with
     | .corner u r =>
         for (q,ds) in SquareIndex.corners psize do
@@ -373,3 +398,27 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
               .not (tsv.diamond_vars (ds rot) d), tsv.diamond_vars (ds (rot+1)) l]
             EncCNF.addClause [.not (tsv.piece_vars i q),
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+1)) u]
+
+def puzzleConstraints (ts : TileSet)
+  : EncCNF (Except String (TileSetVariables ts.size.pred ts.colors)) := do
+  match ts with
+  | ⟨_, 0, _⟩ => return .error "size must be greater than 0"
+  | ⟨_, _, 0⟩ => return .error "colors must be greater than 0"
+  | ⟨tiles, psize+1, pcolors+1⟩ =>
+  match h_ts : decide <| tiles.length = psize.succ * psize.succ with
+  | false => return .error s!"wrong number of tiles in tileset; expected {psize.succ * psize.succ} but got {tiles.length}"
+  | true =>
+  match h_colors : decide <| _ with
+  | false => return .error s!"some tiles exceed the color {pcolors+1}"
+  | true =>
+  match h_uniq : decide <| _ with
+  | false => return .error s!"some tiles not unique"
+  | true =>
+    let tsv ← mkVars tiles psize pcolors.succ
+        ((decide_eq_true_iff _).mp h_ts)
+        ((decide_eq_true_iff _).mp h_colors)
+        ((decide_eq_true_iff _).mp h_uniq)
+    pieceConstraints tsv
+    diamondConstraints tsv
+    essentialConstraints tsv
+    return .ok tsv

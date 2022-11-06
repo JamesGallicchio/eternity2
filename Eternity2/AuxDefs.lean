@@ -22,3 +22,17 @@ def Nat.sqrt (n : Nat) : Nat :=
       iter next
   iter guess
 termination_by iter guess => guess
+
+def List.distinct [DecidableEq α] (L : List α) : List α :=
+  L.foldl (·.insert ·) []
+
+def List.isDistinct [DecidableEq α] : List α → Bool
+| [] => true
+| x::xs => !xs.contains x && xs.isDistinct
+
+def List.fins (n : Nat) : List (Fin n) :=
+  finsAux n (Nat.le_refl _) []
+where
+  finsAux : (i : Nat) → i ≤ n → List (Fin n) → List (Fin n)
+  | 0, _, acc => acc
+  | i+1, h, acc => finsAux i (Nat.le_of_lt h) (⟨i,h⟩ :: acc)

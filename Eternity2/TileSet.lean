@@ -15,8 +15,6 @@ def TileBoard.tileSet (tb : TileBoard size) (colors : Nat) : TileSet :=
 
 namespace TileSet
 
-def unique (ts : TileSet) : Prop := ∀ t1 t2, t1 ∈ ts.tiles → t2 ∈ ts.tiles → ¬ (t1.eq t2)
-
 def toFile (filename : String) (ts : TileSet) : IO Unit := do
   let size := Nat.sqrt ts.tiles.length
   let numColors :=

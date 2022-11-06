@@ -2,7 +2,7 @@ import Eternity2.EncCNF
 
 namespace SATSolve
 
-open Std EncCNF
+open Std EncCNF System
 
 @[extern "leancadical_initialize"]
 private opaque cadicalInit : IO Unit
@@ -95,3 +95,54 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
       ) HashMap.empty
     let s := dbgTraceIfShared "s shared 4" s
     (s, res)
+
+/-- Find all solutions to a given CNF -/
+def allSols (enc : State) (varsToGet : List Var)
+            (reportProgress : Bool := false) : IO (List (AssocList Var Bool))
+            := do
+  IO.FS.createDirAll "cnf"
+  let cnfDir : FilePath := "./cnf"
+  let tempFileName ← (do
+    let mut num : Nat := 1
+    while ← (cnfDir / s!"temp{num}.cnf").pathExists do
+      num := num + 1
+    return cnfDir / s!"temp{num}.cnf")
+  
+  enc.printFileDIMACS tempFileName.toString
+
+  let mut count := 0
+  let mut sols := []
+  let mut satResult := SATSolve.solve enc varsToGet
+
+  let start ← IO.monoMsNow
+  let mut lastUpdateTime := 0
+
+  while satResult.isSome do
+    let now ← IO.monoMsNow
+    if reportProgress && now - lastUpdateTime > 2000 then
+      lastUpdateTime := now
+      IO.print s!"\rfound {count} ({count*1000/(now-start)} / sec)"
+      (←IO.getStdout).flush
+
+    match satResult with
+    | none => panic! "Unreachable :( 12509814"
+    | some (s, assn) =>
+      count := count + 1
+      let sol := varsToGet.foldl (fun acc v =>
+        match assn.find? v with
+        | none => acc
+        | some b => acc.cons v b) AssocList.nil
+      sols := sol :: sols
+      let newClause : EncCNF.Clause :=
+        varsToGet.filterMap (fun v => assn.find? v |>.map (⟨v, ·⟩))
+      enc.appendFileDIMACSClause tempFileName.toString newClause
+
+      satResult := SATSolve.addAndResolve s newClause varsToGet
+
+  if reportProgress then
+    let duration := (←IO.monoMsNow) - start
+    IO.println s!"\rfound {count} solutions in {duration}ms ({(1000*count)/duration} / sec)"
+    (←IO.getStdout).flush
+
+  IO.FS.removeFile tempFileName
+  return sols
