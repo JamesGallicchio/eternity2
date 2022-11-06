@@ -217,18 +217,74 @@ private inductive PieceClass (colors : Nat)
 | oneOppositePair   (ud r l   : Fin colors)
 | allDiff           (u r d l  : Fin colors)
 
-private def classify (t : Tile) (h : t.colors.all (·.all (· ≤ colors))) : PieceClass colors :=
-  /- TODO -/
-  sorry
+instance (c : Nat) : Inhabited (PieceClass c.succ) := ⟨.corner 0 0⟩
+
+private def classify (colors : Nat) (t : Tile) (h : t.colors.all (·.all (· ≤ colors.succ))) : PieceClass colors.succ :=
+  match t with
+  | ⟨none, _, _, _, _⟩
+  | ⟨_, none, _, _, _⟩
+  | ⟨_, _, none, _, _⟩
+  | ⟨_, _, _, none, _⟩ => panic! "unreachable 290581052"
+  | ⟨some u, some r, some d, some l, _⟩ =>
+  /- rotate to put color at u, border at l (if possible) -/
+  match u,r,d,l with
+  | 0, 0, 0, 0
+  | _+1, 0, 0, 0 | 0, _+1, 0, 0 | 0, 0, _+1, 0 | 0, 0, 0, _+1
+  | 0, _+1, 0, _+1 | _+1, 0, _+1, 0
+     => panic! "unreachable 32960845"
+  | u+1, r+1, 0, 0
+  | 0, u+1, r+1, 0
+  | 0, 0, u+1, r+1
+  | r+1, 0, 0, u+1 => .corner ⟨u,sorry⟩ ⟨r,sorry⟩
+  | u+1, r+1, d+1, 0
+  | 0, u+1, r+1, d+1
+  | d+1, 0, u+1, r+1
+  | r+1, d+1, 0, u+1 => .border ⟨u,sorry⟩ ⟨r,sorry⟩ ⟨d,sorry⟩
+  | w+1, x+1, y+1, z+1 =>
+  let w : Fin colors.succ := ⟨w,sorry⟩
+  let x : Fin colors.succ := ⟨x,sorry⟩
+  let y : Fin colors.succ := ⟨y,sorry⟩
+  let z : Fin colors.succ := ⟨z,sorry⟩
+  /- so much casework-/
+  if w = x ∧ x = y ∧ y = z then
+    .fourSame w
+  else if w = x ∧ x = y then
+    .threeSame w z
+  else if x = y ∧ y = z then
+    .threeSame x w
+  else if y = z ∧ z = x then
+    .threeSame y x
+  else if z = x ∧ x = y then
+    .threeSame z y
+  else if w = x ∧ y = z then
+    .twoNeighborPairs w y
+  else if x = y ∧ z = w then
+    .twoNeighborPairs x z
+  else if w = y ∧ x = z then
+    .twoOppositePairs w x
+  else if w = x then
+    .oneNeighborPair w y z
+  else if x = y then
+    .oneNeighborPair x z w
+  else if y = z then
+    .oneNeighborPair y w x
+  else if z = w then
+    .oneNeighborPair z x y
+  else if w = y then
+    .oneOppositePair w x z
+  else if x = z then
+    .oneOppositePair x y w
+  else
+    .allDiff w x y z
 
 def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := do
-  match psize with
-  | 0 => return
-  | psize+1 =>
+  match psize, colors with
+  | 0, _ | _, 0 => return
+  | psize+1, colors+1 =>
   for _h : i in tileIndices psize.succ do
     match
       let i' : Fin tsv.ts.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-      classify (colors := colors) tsv.ts.tiles[i'] sorry
+      classify colors tsv.ts.tiles[i'] sorry
     with
     | .corner u r =>
         for (q,ds) in SquareIndex.corners psize do
