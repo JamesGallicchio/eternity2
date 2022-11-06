@@ -3,6 +3,7 @@ open Lake DSL
 
 /-- The directory where cadical source will be cloned/maintained -/
 def cadicalDir : FilePath := "./cadical"
+def libstdcpp : FilePath := "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
 
 package eternity2 {
   moreLeancArgs := #[ "--verbose" ]
@@ -10,7 +11,7 @@ package eternity2 {
     "-L" ++ (cadicalDir / "build").toString,
     "-I" ++ (cadicalDir / "src").toString,
     "-lcadical",
-    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+    libstdcpp.toString
   ]
 }
 
@@ -18,13 +19,13 @@ lean_lib Eternity2
 
 target leancadical.o (pkg : Package) : FilePath := do
   let oFile := pkg.buildDir / "c" / "leancadical.o"
-  let srcFile ← inputFile <| pkg.dir / "ffi" / "cadical_ffi.c"
+  let srcFile ← inputFile <| pkg.dir / "ffi" / "leancadical.c"
   buildFileAfterDep oFile srcFile fun srcFile => do
     let flags := #[
       "-I" ++ (← getLeanIncludeDir).toString,
       "-I" ++ (cadicalDir / "src").toString,
       "-O3", "-fPIC"]
-    compileO "cadical_ffi.c" oFile srcFile flags "clang"
+    compileO "leancadical.c" oFile srcFile flags "clang"
 
 extern_lib libleancadical (pkg : Package) := do
   -- copy libcadical.so into build/lib

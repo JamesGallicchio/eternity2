@@ -92,20 +92,3 @@ end
 def main : IO Unit := do
   let ts ← genTileSet 7 7
   let _ ← signSols ts (reportProgress := true)
-  --let ((x,y,z), enc) := EncCNF.new do
-  --  let x ← EncCNF.mkVar "x"
-  --  let y ← EncCNF.mkVar "y"
-  --  let z ← EncCNF.mkVar "z"
-  --  EncCNF.addClause [x, y, z]
-  --  EncCNF.addClause [.not x, .not y, .not z]
-  --  return (x,y,z)
---
-  --match SATSolve.solve enc [x,y,z] with
-  --| none => return
-  --| some (s, assn) =>
-  --let s := dbgTraceIfShared "s shared -1" s
-  --IO.println assn.toList
-  --match SATSolve.addAndResolve s [z] [x,y,z] with
-  --| none => return
-  --| some (s, assn) =>
-  --IO.println assn.toList
