@@ -19,34 +19,39 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
     return tsVars)
 
+  -- Need a plain list of variables to check each time we solve
+  let tsVars' := tsVars.map (·.2)
+
   enc.printFileDIMACS tempFileName
 
-  let mut done := false
   let mut count := 0
   let mut sols := []
+  let mut satResult := SATSolve.solve enc tsVars'
 
   let start ← IO.monoMsNow
   let mut lastUpdateTime := 0
 
-  while !done do
+  while satResult.isSome do
     let now ← IO.monoMsNow
     if reportProgress && now - lastUpdateTime > 2000 then
       lastUpdateTime := now
       IO.print s!"\rfound {count} ({count*1000/(now-start)} / sec)"
       (←IO.getStdout).flush
 
-    match ← SATSolve.runCadical tempFileName with
-    | none => done := true
-    | some as =>
+    match satResult with
+    | none => panic! "Unreachable :( 12509814"
+    | some (s, assn) =>
       count := count + 1
       let sol :=
         ⟨ tsVars.map (fun (t,v) =>
-            {t with sign := as.find? v |>.map (fun | true => .plus | false => .minus)})
+            {t with sign := assn.find? v |>.map (fun | true => .plus | false => .minus)})
         , ts.size⟩
       sols := sol :: sols
       let newClause : EncCNF.Clause :=
-        tsVars.map (fun (_,v) => ⟨v, as.find? v |>.get!⟩)
+        tsVars.map (fun (_,v) => ⟨v, assn.find? v |>.get!⟩)
       enc.appendFileDIMACSClause tempFileName newClause
+
+      satResult := SATSolve.addAndResolve s newClause tsVars'
 
   if reportProgress then
     let duration := (←IO.monoMsNow) - start
