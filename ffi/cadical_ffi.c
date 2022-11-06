@@ -21,7 +21,6 @@ static inline void leancadical_finalizer(void *ptr)
 {
     CCaDiCaL *solver = (CCaDiCaL *) ptr;
     ccadical_release(solver);
-    free(solver);
 }
 
 static inline void leancadical_foreach(void *mod, b_lean_obj_arg fn) {
@@ -83,14 +82,27 @@ lean_obj_res leancadical_add_clause(lean_obj_arg s, b_lean_obj_arg L) {
     // While not nil,
     while (L_ != lean_box(0)) {
         // get the head
-        b_lean_obj_arg x = lean_ctor_get(L_, 0);
+        b_lean_obj_res x = lean_ctor_get(L_, 0);
 
-        // unpack
-        assert(lean_is_scalar(x));
-        assert(lean_unbox(x) <= INT_MAX);
+        assert(lean_is_ctor(x));
+        assert(lean_ctor_num_objs(x) == 2);
+        
+        b_lean_obj_res neg = lean_ctor_get(x, 0);
+        b_lean_obj_res num = lean_ctor_get(x, 1);
+
+        assert(lean_is_scalar(neg));
+        assert(lean_unbox(neg) < 2);
+        bool isNeg = lean_unbox(neg);
+
+        assert(lean_is_scalar(num));
+        assert(0 < lean_unbox(num));
+        assert(lean_unbox(num) < INT_MAX);
+        size_t var = lean_unbox(num);
+
+        int signedVar = (isNeg ? -((int)var) : (int)var);
 
         // add literal to clause
-        ccadical_add(solver, (int)lean_unbox(x));
+        ccadical_add(solver, signedVar);
 
         // move on to the tail
         L_ = lean_ctor_get(L_, 1);

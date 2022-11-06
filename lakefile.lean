@@ -10,7 +10,7 @@ package eternity2 {
     "-L" ++ (cadicalDir / "build").toString,
     "-I" ++ (cadicalDir / "src").toString,
     "-lcadical",
-    "-lstdc++"
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
   ]
 }
 
