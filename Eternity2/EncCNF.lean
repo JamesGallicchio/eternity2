@@ -47,6 +47,15 @@ def printAux (println : String → IO Unit)
     )
     println (String.intercalate " " (nums ++ ["0"]))
 
+def prettyPrintAux (println : String → IO Unit)
+  : State → IO Unit
+| ⟨_, clauses, names, _⟩ => do
+  for c in clauses do
+    let nums := c.map (fun ⟨v, neg⟩ =>
+      if neg then s!"~{names.find? v |>.get!}" else s!" {names.find? v |>.get!}"
+    )
+    println ("(" ++ String.intercalate " \\/ " nums ++ " ) /\\")
+
 def printDIMACS := printAux IO.println
 
 def printFileDIMACS (cnfFile : String) (s : State) : IO Unit := do

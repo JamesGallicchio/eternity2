@@ -313,9 +313,9 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
     with
     | .corner u r =>
         for (q,ds) in SquareIndex.corners psize do
-          /- if i placed at q, then diamond1 colored u ∧ diamond2 colored r -/
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) u]
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) r]
+          /- if i placed at q, then diamond2 colored u ∧ diamond1 colored r -/
+          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) u]
+          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) r]
     | .border u r d =>
         for (q,ds) in SquareIndex.borders psize do
           /- if i placed at q, then diamond1 colored u ∧ diamond2 colored r ∧ diamond3 colored d -/

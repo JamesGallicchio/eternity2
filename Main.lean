@@ -73,21 +73,30 @@ def main : IO Unit := do
     Constraints.DiamondIndex.all _ |>.bind fun d =>
     List.fins _ |>.map fun i =>
     tsv.diamond_vars d i
-  let sol := SATSolve.solve enc pVars
-  match sol with
-  | none =>
-  IO.println "unsat"
-  | some (_, assn) =>
-  let board : TileBoard 3 := {
-    board := Array.init _ fun r =>
-      Array.init _ fun c =>
-        List.fins _
-        |>.find? (fun p => assn.findD (tsv.piece_vars p ⟨r,c⟩) false)
-        |> (fun
-          | none => ⟨none, none, none, none, none⟩
-          | some p => ts.tiles[p]!)
-    board_size := sorry
-    isFinalized := true
-    finalize := sorry
-  }
-  IO.println board
+  EncCNF.State.printFileDIMACS "test.cnf" enc
+  EncCNF.State.prettyPrintAux IO.println enc
+  let mut run := true
+  let mut sol := SATSolve.solve enc pVars
+  while run do
+    match sol with
+    | none =>
+        run := false
+        IO.println "unsat"
+    | some (solver, assn) =>
+    let board : TileBoard 3 := {
+      board := Array.init _ fun r =>
+        Array.init _ fun c =>
+          List.fins _
+          |>.find? (fun p => assn.findD (tsv.piece_vars p ⟨r,c⟩) false)
+          |> (fun
+            | none => ⟨none, none, none, none, none⟩
+            | some p => ts.tiles[p]!)
+      board_size := sorry
+      isFinalized := true
+      finalize := sorry
+    }
+    IO.println board
+    IO.println ""
+    let newClause : EncCNF.Clause :=
+      pVars.filterMap (fun v => assn.find? v |>.map (⟨v, ·⟩))
+    sol := SATSolve.addAndResolve solver newClause pVars

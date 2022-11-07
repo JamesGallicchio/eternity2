@@ -107,7 +107,7 @@ def allSols (enc : State) (varsToGet : List Var)
     while ← (cnfDir / s!"temp{num}.cnf").pathExists do
       num := num + 1
     return cnfDir / s!"temp{num}.cnf")
-  
+
   enc.printFileDIMACS tempFileName.toString
 
   let mut count := 0
