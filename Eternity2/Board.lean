@@ -188,14 +188,19 @@ def isLegal (dboard : DiamondBoard size) : Bool :=
 def hasUnColored (board : Array (Array Diamond)) : Bool :=
   board.any (fun row => row.any (fun c => c.val.isNone))
 
-/-- `size`x`size` board with `colors` colors assigned randomly. -/
-def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoard size) := do
+def blankBoard (size : Nat) : IO (Array (Array Diamond)) := do
   let mut a := Array.mkEmpty (2 * size - 1)
   for i in [0:2*size - 1] do
     let len := if i % 2 = 0 then (size - 1) else size
     a := a.push (Array.mkEmpty len)
     for j in [0:len] do
       a := a.set! i <| (a.get! i).push (⟨none, sorry⟩ : Diamond)
+  return a
+
+
+/-- `size`x`size` board with `colors` colors assigned randomly. -/
+def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoard size) := do
+  let mut a ← blankBoard size
 
   while hasUnColored a do
     let i ← IO.rand 0 (a.size - 1)
@@ -204,6 +209,7 @@ def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoa
     if a[i]![j]!.val.isSome
     then continue
 
+    let mut attempts := 0
     let mut pickColor := true
     while pickColor do
       let c ← IO.rand (borderColor.get! + 1) <|
@@ -213,6 +219,12 @@ def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoa
       a := a.set! i <| (a.get! i).set! j (⟨some c, sorry⟩ : Diamond)
       let dboard : DiamondBoard size := DiamondBoard.mk a sorry sorry false sorry
       pickColor := not (isLegal dboard)
+      if attempts > 1000
+      then do
+        a ← blankBoard size
+        break
+      attempts := attempts + 1
+
 
   return DiamondBoard.mk a sorry sorry true sorry
 
