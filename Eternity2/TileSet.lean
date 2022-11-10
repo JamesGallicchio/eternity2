@@ -4,19 +4,16 @@ namespace Eternity2
 
 open Std
 
-structure TileSet where
+structure TileSet (size colors : Nat) where
   tiles : List Tile
-  size : Nat
-  colors : Nat
 deriving Inhabited, DecidableEq
 
-def TileBoard.tileSet (tb : TileBoard size) (colors : Nat) : TileSet :=
-  ⟨tb.tiles, size, colors⟩
+def TileBoard.tileSet (tb : TileBoard size) (colors : Nat) : TileSet size colors :=
+  ⟨tb.tiles⟩
 
 namespace TileSet
 
-def toFile (filename : String) (ts : TileSet) : IO Unit := do
-  let size := Nat.sqrt ts.tiles.length
+def toFile (filename : String) (ts : TileSet size colors) : IO Unit := do
   let numColors :=
     ts.tiles.foldl (fun acc ⟨a,b,c,d,_⟩ =>
         [a,b,c,d].foldl (fun acc x => if x ≠ borderColor then acc.insert x () else acc) acc
@@ -31,7 +28,7 @@ def toFile (filename : String) (ts : TileSet) : IO Unit := do
   IO.FS.withFile filename .write (fun handle =>
     handle.putStr contents)
 
-def fromFile (filename : String) : IO TileSet := do
+def fromFile (filename : String) : IO (Σ size colors, TileSet size colors) := do
   let contents ← IO.FS.withFile filename .read (fun handle =>
     handle.readToEnd
   )
@@ -57,13 +54,14 @@ def fromFile (filename : String) : IO TileSet := do
       | [some a, some b, some c, some d] => ⟨a,c,d,b,none⟩
       | _ => panic! s!"Bad input line {s}")
 
-  return ⟨tiles,size, tiles.map (fun t =>
-    t.colors.filterMap id) |>.join.maximum?.getD 0⟩
+  let colors := tiles.map (fun t => t.colors.filterMap id)
+                |>.join.maximum?.getD 0
+  return ⟨size, colors, ⟨tiles⟩⟩
 
-def toString (ts : TileSet) : String :=
+def toString (ts : TileSet size colors) : String :=
   ts.tiles.map (·.toString)
   |>.map (·.splitOn "\n")
   |>.foldl (fun L1 L2 => List.zipWith (· ++ " " ++ ·) L1 L2) ["","",""]
   |> String.intercalate "\n"
 
-instance : ToString TileSet := ⟨toString⟩
+instance : ToString (TileSet size colors) := ⟨toString⟩

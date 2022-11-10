@@ -3,15 +3,18 @@ import Eternity2
 open Eternity2
 open System
 
-def genTileSet (size coreColors edgeColors : Nat) : IO TileSet := do
+def genTileSet (size coreColors edgeColors : Nat) : IO (TileSet size coreColors) := do
   let b ← DiamondBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b false
   return t.tileSet coreColors
 
-def fetchEternity2Tiles : IO TileSet :=
-  TileSet.fromFile "puzzles/e2pieces.txt"
+def fetchEternity2Tiles : IO (TileSet 16 17) := do
+  let ts ← TileSet.fromFile "puzzles/e2pieces.txt"
+  match ts with
+  | ⟨16, 17, tiles⟩ => return tiles
+  | _ => panic! s!"e2pieces.txt has {ts.fst} size and {ts.snd.fst} colors??"
 
-def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet) := do
+def signSols (ts : TileSet size colors) (reportProgress : Bool := false) : IO (List (TileSet size colors)) := do
   let (tsVars, enc) := EncCNF.new (do
     let tsVars ← Constraints.colorCardConstraints ts.tiles 9
     EncCNF.addClause [⟨tsVars.head!.2, false⟩]
@@ -20,12 +23,28 @@ def signSols (ts : TileSet) (reportProgress : Bool := false) : IO (List TileSet)
   -- Need a plain list of variables to check each time we solve
   let tsVars' := tsVars.map (·.2)
 
-  return (← SATSolve.allSols enc tsVars' reportProgress)
+  return (← SATSolve.allSols enc tsVars' tsVars' reportProgress)
     |>.map fun sol =>
-      ⟨ tsVars.map (fun (t,v) =>
-            {t with sign := sol.find? v |>.map (fun | true => .plus | false => .minus)})
-      , ts.size
-      , ts.colors⟩
+      ⟨ tsVars.map (fun (t,v) => { t with
+          sign := sol.find? v
+                  |>.map (fun | true => .plus | false => .minus)})
+      ⟩
+
+def decodeSol (tsv : Constraints.TileSetVariables size colors)
+              (s : Std.AssocList EncCNF.Var Bool) :=
+  show TileBoard size from {
+    board :=
+      Array.init _ (fun i =>
+        Array.init _ (fun j =>
+          List.fins _
+            |>.find? (fun p => s.find? (tsv.piece_vars p ⟨i,j⟩) |>.get!)
+            |>.map (tsv.tiles[·]!)
+            |>.getD ⟨none,none,none,none,none⟩
+      ))
+    board_size := sorry
+    isFinalized := true
+    finalize := sorry
+  }
 
 section variable (size : Nat) (iters := 100) (reportProgress := true)
 
@@ -89,47 +108,25 @@ def plotData (size : Nat) : IO Unit := do
     i := i + 1
 
 def main : IO Unit := do
-  plotData 6
-  -- let ts ← genTileSet 2 3 3
-  -- IO.println ts
-  -- match EncCNF.new do
-  --   Constraints.puzzleConstraints ts
-  -- with
-  -- | (.error s, _) => IO.println s!"failed to generate encoding: {s}"
-  -- | (.ok tsv, enc) =>
-  -- let pVars :=
-  --   List.fins _ |>.bind fun p =>
-  --   List.fins _ |>.bind fun r =>
-  --   List.fins _ |>.map fun c =>
-  --   tsv.piece_vars p ⟨r,c⟩
-  -- let dVars :=
-  --   Constraints.DiamondIndex.all _ |>.bind fun d =>
-  --   List.fins _ |>.map fun i =>
-  --   tsv.diamond_vars d i
-  -- EncCNF.State.printFileDIMACS "test.cnf" enc
-  -- EncCNF.State.prettyPrintAux IO.println enc
-  -- let mut run := true
-  -- let mut sol := SATSolve.solve enc pVars
-  -- while run do
-  --   match sol with
-  --   | none =>
-  --       run := false
-  --       IO.println "unsat"
-  --   | some (solver, assn) =>
-  --   let board : TileBoard 3 := {
-  --     board := Array.init _ fun r =>
-  --       Array.init _ fun c =>
-  --         List.fins _
-  --         |>.find? (fun p => assn.findD (tsv.piece_vars p ⟨r,c⟩) false)
-  --         |> (fun
-  --           | none => ⟨none, none, none, none, none⟩
-  --           | some p => ts.tiles[p]!)
-  --     board_size := sorry
-  --     isFinalized := true
-  --     finalize := sorry
-  --   }
-  --   IO.println board
-  --   IO.println ""
-  --   let newClause : EncCNF.Clause :=
-  --     pVars.filterMap (fun v => assn.find? v |>.map (⟨v, ·⟩))
-  --   sol := SATSolve.addAndResolve solver newClause pVars
+  let size := 3
+  let ts ← genTileSet size (size+2) 3
+  IO.println ts
+
+  let enc := EncCNF.new <| ExceptT.run do
+    let tsv ← Constraints.puzzleConstraints ts
+    match Constraints.tileIndices size.pred
+              |>.find? (tsv.tiles[·]!.isCorner)
+    with
+    | none => return tsv
+    | some p =>
+    EncCNF.addClause [⟨tsv.piece_vars p ⟨0,0⟩, false⟩]
+    return tsv
+
+  match enc with
+  | (.error s, _) => IO.println s!"failed to generate encoding: {s}"
+  | (.ok tsv, enc) =>
+
+  let sols ← SATSolve.allSols enc tsv.pieceVarList tsv.diamondVarList
+  IO.println s!"{sols.length} total solutions"
+  for s in sols do
+    IO.println (decodeSol tsv s)
