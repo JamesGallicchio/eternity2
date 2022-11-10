@@ -88,7 +88,7 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
   solveAux s varsToGet
 
 /-- Find all solutions to a given CNF -/
-def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var)
+def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := varsToGet)
             (reportProgress : Bool := false) : IO (List (AssocList Var Bool))
             := do
   IO.FS.createDirAll "cnf"
