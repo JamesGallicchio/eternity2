@@ -28,7 +28,7 @@ deriving Inhabited, DecidableEq, Hashable, Repr, ToString
 
 /-- State for an encoding -/
 structure State where
-  numVars : Nat
+  nextVar : Nat
   clauses : List Clause
   names : HashMap Nat String
   varCtx : String
@@ -37,13 +37,13 @@ namespace State
 
 def printAux (println : String → IO Unit)
   : State → IO Unit
-| ⟨numVars, clauses, names, _⟩ => do
-  println s!"p cnf {numVars} {clauses.length}"
-  for i in [0:numVars] do
-    println s!"c {i+1} {names.find? i |>.get!}"
+| ⟨nextVar, clauses, names, _⟩ => do
+  println s!"p cnf {nextVar-1} {clauses.length}"
+  for i in [1:nextVar] do
+    println s!"c {i} {names.find? i |>.get!}"
   for c in clauses do
     let nums := c.map (fun ⟨v, neg⟩ =>
-      if neg then "-" ++ toString v.succ else toString v.succ
+      if neg then "-" ++ toString v else toString v
     )
     println (String.intercalate " " (nums ++ ["0"]))
 
@@ -66,7 +66,7 @@ def printFileDIMACS (cnfFile : String) (s : State) : IO Unit := do
 
 def appendFileDIMACSClause (cnfFile : String) (c : Clause) (_ : State) : IO Unit := do
     let nums := c.map (fun ⟨v, neg⟩ =>
-        if neg then "-" ++ toString v.succ else toString v.succ
+        if neg then "-" ++ toString v else toString v
       )
     IO.FS.withFile cnfFile .append (fun handle =>
       handle.putStrLn (String.intercalate " " (nums ++ ["0"]))
@@ -83,7 +83,7 @@ namespace EncCNF
 
 nonrec def run (s : State) (e : EncCNF α) : α × State := e.run s
 
-nonrec def new : EncCNF α → α × State := run ⟨0, [], HashMap.empty, ""⟩
+nonrec def new : EncCNF α → α × State := run ⟨1, [], HashMap.empty, ""⟩
 
 def newCtx (name : String) (inner : EncCNF α) : EncCNF α := do
   let oldState ← get
@@ -96,10 +96,10 @@ def newCtx (name : String) (inner : EncCNF α) : EncCNF α := do
 def mkVar (name : String) : EncCNF Var := do
   let oldState ← get
   set { oldState with
-    numVars := oldState.numVars+1,
-    names := oldState.names.insert oldState.numVars
+    nextVar := oldState.nextVar+1,
+    names := oldState.names.insert oldState.nextVar
                 (oldState.varCtx ++ name)}
-  return oldState.numVars
+  return oldState.nextVar
 
 def addClause (C : Clause) : EncCNF Unit := do
   let oldState ← get
@@ -108,7 +108,7 @@ def addClause (C : Clause) : EncCNF Unit := do
 
 def mkTemp : EncCNF Var := do
   let oldState ← get
-  return ← mkVar ("tmp" ++ toString oldState.numVars)
+  return ← mkVar ("tmp" ++ toString oldState.nextVar)
 
 
 example : IO Unit := do
@@ -156,7 +156,7 @@ instance : GetElem (VarBlock ds) Nat (VarBlock.elemTy ds) (fun v i => i < v.hdLe
 def mkVarBlock (name : String) (dims : List Nat) (h : dims.length > 0 := by simp)
   : EncCNF (VarBlock dims) := do
   let state ← get
-  let start := state.numVars
+  let start := state.nextVar
   gen dims name
   return ⟨start, h⟩
 where gen (dims : List Nat) (pref : String) : EncCNF Unit := do
@@ -169,4 +169,4 @@ where gen (dims : List Nat) (pref : String) : EncCNF Unit := do
 
 def mkTempBlock (dims : List Nat) (h : dims.length > 0 := by simp)
   : EncCNF (VarBlock dims) := do
-  return ← mkVarBlock ("tmp" ++ toString (← get).numVars) dims h
+  return ← mkVarBlock ("tmp" ++ toString (← get).nextVar) dims h
