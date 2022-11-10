@@ -1,11 +1,11 @@
 import Eternity2
 
 open Eternity2
+open System
 
 def genTileSet (size coreColors edgeColors : Nat) : IO (TileSet size coreColors) := do
   let b ← DiamondBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b false
-  IO.println t
   return t.tileSet coreColors
 
 def fetchEternity2Tiles : IO (TileSet 16 17) := do
@@ -72,8 +72,40 @@ def printSolutionCountStats := do
   IO.println s!"avg: {avg}"
   IO.println s!"var: {var}"
   IO.println s!"std: {Nat.sqrt var}"
-
 end
+
+def plotData (size : Nat) : IO Unit := do
+  IO.FS.createDirAll "plots"
+  let plotsDir : FilePath := "./plots"
+  let outputFile : FilePath := plotsDir / "output.csv"
+  IO.FS.createDirAll (plotsDir / "board")
+  let boardsDir : FilePath := plotsDir / "board"
+  let mut i := 0
+  let mut j := 0
+  IO.FS.withFile outputFile .write (fun handle =>
+    handle.putStrLn ("title,size,colors,kind,solutions")
+  )
+  while i < 9 do
+    let colors := size + i - 1
+    j := 0
+    while j < 10 do
+      let tiles ← genTileSet size colors 3
+      let boardTitle := s!"{size}_{colors}_{j}"
+
+      IO.println s!"Board: {boardTitle}"
+
+      TileSet.toFile
+        (boardsDir / s!"board_{boardTitle}.txt").toString
+        tiles
+      let (tvs, state) := EncCNF.new do
+        Constraints.colorCardConstraints tiles.tiles colors
+      let sols ← SATSolve.allSols state (reportProgress := true) (List.map (·.2) tvs)
+
+      IO.FS.withFile outputFile .append (fun handle =>
+        handle.putStrLn (s!"{boardTitle},{size},{colors},sign,{sols.length}")
+      )
+      j := j + 1
+    i := i + 1
 
 def main : IO Unit := do
   let size := 3
