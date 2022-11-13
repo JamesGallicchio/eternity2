@@ -1,64 +1,8 @@
-import Eternity2.EncCNF
+import Eternity2.SATSolve.Cadical
 
 namespace SATSolve
 
-open Std EncCNF System
-
-@[extern "leancadical_initialize"]
-private opaque cadicalInit : IO Unit
-
-builtin_initialize cadicalInit
-
-opaque CadicalSolver.Pointed : NonemptyType.{0}
-
-def CadicalSolver := (CadicalSolver.Pointed).type
-
-namespace CadicalSolver
-
-instance : Nonempty CadicalSolver := CadicalSolver.Pointed.property
-
-@[extern "leancadical_new"]
-opaque new (u : @& Unit) : CadicalSolver
-
-instance : Inhabited CadicalSolver := ⟨new ()⟩
-
-@[extern "leancadical_add_clause"]
-opaque addClause (C : CadicalSolver) (L : @& List (Bool × Nat)) : CadicalSolver
-
-@[extern "leancadical_solve"]
-opaque solve (C : CadicalSolver) : CadicalSolver × Option Bool
-
-@[extern "leancadical_value"]
-opaque value (C : @& CadicalSolver) (i : @& Nat) : Option Bool
-
-end CadicalSolver
-
-def runCadicalCLI (cnfFile : String) : IO (Option (HashMap Var Bool)) := do
-  -- Run cadical on cnfFile
-  let out := (← IO.Process.output {
-    stdin := .piped
-    stdout := .piped
-    stderr := .piped
-    cmd := "cadical"
-    args := #[cnfFile, "--sat", "-f", "-q"]
-  }).stdout
-  let lines := out.splitOn "\n" |>.filter (not <| String.startsWith "c" ·)
-  match lines with
-  | "s SATISFIABLE" :: satis =>
-    return some (
-      satis
-      |>.filter (not <| ·.isEmpty)
-      |>.map (·.drop 2 |>.splitOn " ")
-      |>.join
-      |>.map (·.toInt!)
-      |>.filter (· ≠ 0)
-      |>.foldl (fun acc i =>
-          acc.insert (Int.natAbs i) (i > 0)
-        ) (HashMap.empty)
-    )
-  | "s UNSATISFIABLE" :: _ => return none
-  | out =>
-    panic! s!"failed to parse output ({out.length} lines):\n{out.take 3}\n..."
+open System Std EncCNF
 
 private def solveAux (s : CadicalSolver) (varsToGet : List Var)
   : Option (CadicalSolver × HashMap Var Bool) :=
@@ -88,8 +32,8 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
   solveAux s varsToGet
 
 /-- Find all solutions to a given CNF -/
-def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var)
-            (reportProgress : Bool := false) : IO (List (AssocList Var Bool))
+def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := varsToGet)
+            (reportProgress : Bool := false) : IO (List (HashMap Var Bool))
             := do
   IO.FS.createDirAll "cnf"
   let cnfDir : FilePath := "./cnf"
@@ -121,11 +65,7 @@ def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var)
     | none => panic! "Unreachable :( 12509814"
     | some (s, assn) =>
       count := count + 1
-      let sol := varsToGet.foldl (fun acc v =>
-        match assn.find? v with
-        | none => acc
-        | some b => acc.cons v b) AssocList.nil
-      sols := sol :: sols
+      sols := assn :: sols
       let newClause : EncCNF.Clause :=
         varsToBlock.filterMap (fun v => assn.find? v |>.map (⟨v, ·⟩))
       enc.appendFileDIMACSClause tempFileName.toString newClause
@@ -137,5 +77,5 @@ def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var)
     IO.println s!"\rfound {count} solutions in {duration}ms ({(1000*count)/duration} / sec)"
     (←IO.getStdout).flush
 
-  --IO.FS.removeFile tempFileName
+  IO.FS.removeFile tempFileName
   return sols

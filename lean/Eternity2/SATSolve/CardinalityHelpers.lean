@@ -1,4 +1,4 @@
-import Eternity2.EncCNF
+import Eternity2.SATSolve.EncCNF
 
 namespace EncCNF
 

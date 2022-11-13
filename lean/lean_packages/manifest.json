@@ -1,0 +1,10 @@
+{"version": 2,
+ "packages":
+ [{"url": "https://github.com/mhuisi/lean4-cli",
+   "rev": "cf9801822a4c9826feb4e641fcba55df6fc1959a",
+   "name": "Cli",
+   "inputRev": "nightly"},
+  {"url": "https://github.com/JamesGallicchio/std4",
+   "rev": "43bbbd68a617a0689d4576b8c26f64209f59cc95",
+   "name": "std",
+   "inputRev": "iterators"}]}

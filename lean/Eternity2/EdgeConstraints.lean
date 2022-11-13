@@ -1,6 +1,5 @@
 import Eternity2.TileSet
-import Eternity2.CardinalityHelpers
-import Eternity2.SATSolve
+import Eternity2.SATSolve.CardinalityHelpers
 
 namespace Eternity2.Constraints
 

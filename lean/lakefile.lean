@@ -93,9 +93,14 @@ script setup _args := do
       return 1
 
   IO.println "Configuring cadical makefile..."
+  let cxxflags :=  "-I" ++ (←getLeanIncludeDir).toString ++
+                          " -L" ++ ((←getLeanLibDir) / "..").toString ++
+                          " -lc++"
+  IO.println cxxflags
   let child ← IO.Process.spawn {
     cmd := s!"./configure"
-    args := #["CXX=clang++", "CXXFLAGS=-stdlib=libstdc++", "-fPIC"]
+    args := #["-fPIC"]
+    env := #[ ("CXX", "clang++") ]
     cwd := cadicalDir
   }
   if (← child.wait) ≠ 0 then

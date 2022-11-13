@@ -1,6 +1,0 @@
-{"version": 2,
- "packages":
- [{"url": "https://github.com/JamesGallicchio/std4",
-   "rev": "43bbbd68a617a0689d4576b8c26f64209f59cc95",
-   "name": "std",
-   "inputRev": "iterators"}]}

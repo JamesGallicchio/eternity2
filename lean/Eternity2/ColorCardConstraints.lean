@@ -1,5 +1,5 @@
 import Eternity2.Board
-import Eternity2.CardinalityHelpers
+import Eternity2.SATSolve.CardinalityHelpers
 
 namespace Eternity2.Constraints
 
