@@ -35,16 +35,6 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
 def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := varsToGet)
             (reportProgress : Bool := false) : IO (List (HashMap Var Bool))
             := do
-  let tempDir : FilePath := "temp"
-  IO.FS.createDirAll tempDir
-
-  let tempFileName ← (do
-    let mut num : Nat := 1
-    while ← (tempDir / s!"temp{num}.cnf").pathExists do
-      num := num + 1
-    return tempDir / s!"temp{num}.cnf")
-
-  enc.printFileDIMACS tempFileName.toString
 
   let varsToGet := varsToGet.union varsToBlock
 
@@ -69,7 +59,6 @@ def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := vars
       sols := assn :: sols
       let newClause : EncCNF.Clause :=
         varsToBlock.filterMap (fun v => assn.find? v |>.map (⟨v, ·⟩))
-      enc.appendFileDIMACSClause tempFileName.toString newClause
 
       satResult := SATSolve.addAndResolve s newClause varsToGet
 
@@ -78,5 +67,4 @@ def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := vars
     IO.println s!"\rfound {count} solutions in {duration}ms ({(1000*count)/duration} / sec)"
     (←IO.getStdout).flush
 
-  IO.FS.removeFile tempFileName
   return sols
