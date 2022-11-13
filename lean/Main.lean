@@ -13,84 +13,55 @@ def fetchEternity2Tiles : IO (TileSet 16 17) := do
   let ts ← TileSet.fromFile "puzzles/e2pieces.txt"
   match ts with
   | ⟨16, 17, tiles⟩ => return tiles
-  | _ => panic! s!"e2pieces.txt has {ts.fst} size and {ts.snd.fst} colors??"
+  | ⟨size,colors,_⟩ => panic! s!"e2pieces.txt has size {size} and {colors} colors??"
 
-def signSols (ts : TileSet size colors) (reportProgress : Bool := false) : IO (List (TileSet size colors)) := do
-  let (tsVars, enc) := EncCNF.new (do
-    let tsVars ← Constraints.colorCardConstraints ts.tiles 9
-    EncCNF.addClause [⟨tsVars.head!.2, false⟩]
-    return tsVars)
-
-  -- Need a plain list of variables to check each time we solve
-  let tsVars' := tsVars.map (·.2)
-
-  return (← SATSolve.allSols enc tsVars' tsVars' reportProgress)
-    |>.map fun sol =>
-      ⟨ tsVars.map (fun (t,v) => { t with
-          sign := sol.find? v
-                  |>.map (fun | true => .plus | false => .minus)})
-      ⟩
-
-section variable (size : Nat) (iters := 100) (reportProgress := true)
-
-def sampleSolutionCounts := do
-  let mut counts := []
-  let width := 80
-  IO.print ("[".pushn ' ' width ++ "]")
-  for i in [0:iters] do
-    if reportProgress then
-      let stars := (width * i + width / 2 + 1) / iters
-      IO.print ("\r[".pushn '*' stars |>.pushn ' ' (width-stars) |>.push ']')
-      (←IO.getStdout).flush
-    let ts ← genTileSet size (size + 1) (Nat.sqrt size + 1)
-    let sols ← signSols ts
-    counts := sols.length :: counts
-
-  IO.println ""
-  return counts
-
-def printSolutionCountStats := do
-  let counts ← sampleSolutionCounts size
-  IO.println s!"counts: {counts}"
-  let avg := (counts.foldl (· + ·) (counts.length / 2)) / counts.length
-  let var := (counts.foldl (fun acc x => acc + (x - avg) * (x - avg)) (counts.length / 2)) / counts.length
-  IO.println s!"avg: {avg}"
-  IO.println s!"var: {var}"
-  IO.println s!"std: {Nat.sqrt var}"
-end
-
-def plotData (size : Nat) : IO Unit := do
-  IO.FS.createDirAll "plots"
-  let plotsDir : FilePath := "./plots"
-  let outputFile : FilePath := plotsDir / "output.csv"
-  IO.FS.createDirAll (plotsDir / "board")
+def plotSolCounts (name : String) (size : Nat)
+  (encoding : (colors : Nat) → TileSet size colors → EncCNF (List EncCNF.Var)) : IO Unit := do
+  let plotsDir : FilePath := "./plots/"
+  let outputFile : FilePath := plotsDir / s!"output_{name}_{size}.csv"
   let boardsDir : FilePath := plotsDir / "board"
-  let mut i := 0
-  let mut j := 0
+
+  IO.FS.createDirAll boardsDir
+
   IO.FS.withFile outputFile .write (fun handle =>
-    handle.putStrLn ("title,size,colors,kind,solutions")
+    handle.putStrLn ("title,size,colors,solutions")
   )
-  while i < 9 do
-    let colors := size + i - 1
-    j := 0
-    while j < 10 do
-      let tiles ← genTileSet size colors 3
+  for i in [0:10] do
+    let colors := size + i
+    parallel for j in [0:10] do
+      let tiles ← genTileSet size colors (size.sqrt + 1)
       let boardTitle := s!"{size}_{colors}_{j}"
 
       IO.println s!"Board: {boardTitle}"
 
-      TileSet.toFile
-        (boardsDir / s!"board_{boardTitle}.txt").toString
-        tiles
-      let (tvs, state) := EncCNF.new do
-        Constraints.colorCardConstraints tiles.tiles colors
-      let sols ← SATSolve.allSols state (reportProgress := true) (List.map (·.2) tvs)
+      --TileSet.toFile
+      --  (boardsDir / s!"board_{boardTitle}.txt").toString
+      --  tiles
+      let (blocking_vars, state) := EncCNF.new (encoding colors tiles)
+      let sols ← SATSolve.allSols state (reportProgress := true) blocking_vars
 
       IO.FS.withFile outputFile .append (fun handle =>
-        handle.putStrLn (s!"{boardTitle},{size},{colors},sign,{sols.length}")
+        handle.putStrLn (s!"{boardTitle},{size},{colors},{sols.length}")
       )
-      j := j + 1
-    i := i + 1
+
+def plotSignSolCounts (size : Nat) : IO Unit := do
+  plotSolCounts "sign" size fun colors ts => do
+    let tile_vars ← Constraints.colorCardConstraints ts.tiles colors 
+    return tile_vars.map (·.2)
+
+def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
+  plotSolCounts "edgesign" size fun colors ts => do
+    let tile_vars ← Constraints.colorCardConstraints ts.tiles colors 
+    return tile_vars.filterMap (fun (t, v) =>
+      if !t.isCenter then some v else none)
+
+def plotPuzzleSolCounts (size : Nat) : IO Unit := do
+  plotSolCounts "puzzle" size fun _ ts => do
+    match ← Constraints.puzzleConstraints ts with
+    | .error s => panic! s!"it got sad :(\n{s}"
+    | .ok tsv => 
+      return tsv.diamondVarList
+
 
 open Cli
 

@@ -125,3 +125,14 @@ where
   finsAux : (i : Nat) → i ≤ n → List (Fin n) → List (Fin n)
   | 0, _, acc => acc
   | i+1, h, acc => finsAux i (Nat.le_of_lt h) (⟨i,h⟩ :: acc)
+
+
+def parForIn [ForIn IO σ α] (xs : σ) (f : α → IO PUnit) : IO PUnit := do
+  let mut tasks := #[]
+  for x in xs do
+    tasks := tasks.push (← IO.asTask (f x))
+  tasks.forM (ofExcept ·.get)
+
+syntax "parallel " "for " ident " in " termBeforeDo " do " doSeq : doElem
+macro_rules
+  | `(doElem| parallel for $x in $xs do $seq) => `(doElem| parForIn $xs fun $x => do $seq)

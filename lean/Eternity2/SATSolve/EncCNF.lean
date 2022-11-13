@@ -72,6 +72,41 @@ def appendFileDIMACSClause (cnfFile : String) (c : Clause) (_ : State) : IO Unit
       handle.putStrLn (String.intercalate " " (nums ++ ["0"]))
     )
 
+def fromDIMACS (dimacs : String) : Except String EncCNF.State :=
+  match
+    dimacs.splitOn "\n"
+    |>.filter (fun line => !line.startsWith "c" && line.any (!·.isWhitespace))
+    |>.map (·.splitOn " ")
+  with
+  | ["p", "cnf", vars, clauses] :: clauseLines => do
+    let vars ← match vars.toNat? with | none => .error "p line vars not a number" | some n => .ok n
+    let _ ← match clauses.toNat? with | none => .error "p line clauses not a number" | some n => .ok n
+    let clauses ← clauseLines.mapM (
+      ·.mapM (fun w =>
+        match w.toInt? with
+        | none => .error s!"{w} not an integer"
+        | some i =>
+          if i.natAbs ≤ vars then
+            .ok ⟨i.natAbs, i < 0⟩
+          else
+            .error s!"{i} is outside the claimed number of variables {vars}"
+        ))
+    return {
+      nextVar := vars+1
+      clauses := clauses
+      names := Id.run do
+        let mut names := HashMap.empty
+        for i in [1:vars+1] do
+          names := names.insert i s!"DIMACS var {i}"
+        names
+      varCtx := ""
+    }
+  | _ => .error "expected p line"
+
+def fromFileDIMACS (cnfFile : String) : IO EncCNF.State := do
+  let contents ← IO.FS.withFile cnfFile .read (·.readToEnd)
+  return ← IO.ofExcept <| fromDIMACS contents
+
 end State
 
 end EncCNF
