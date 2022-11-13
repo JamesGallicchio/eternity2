@@ -1,6 +1,10 @@
 .DS_Store
-/build
-/lean_packages/*
-!/lean_packages/manifest.json
+
+/lean/build
+/lean/lean_packages/*
+!/lean/lean_packages/manifest.json
+
+/py/__pycache__
+
 *.cnf
 *.drat

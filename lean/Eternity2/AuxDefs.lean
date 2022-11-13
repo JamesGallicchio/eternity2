@@ -136,3 +136,14 @@ def parForIn [ForIn IO σ α] (xs : σ) (f : α → IO PUnit) : IO PUnit := do
 syntax "parallel " "for " ident " in " termBeforeDo " do " doSeq : doElem
 macro_rules
   | `(doElem| parallel for $x in $xs do $seq) => `(doElem| parForIn $xs fun $x => do $seq)
+
+def Option.forIn [Monad m] (o : Option α) (b : β) (f : α → β → m (ForInStep β)) : m β := do
+  match o with
+  | none => return b
+  | some a =>
+  match ← f a b with
+  | .done b => return b
+  | .yield b => return b
+
+instance : ForIn m (Option α) α where
+  forIn := Option.forIn

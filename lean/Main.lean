@@ -102,4 +102,6 @@ def mainCmd := `[Cli|
 ]
 
 def main (args : List String) : IO UInt32 := do
-  mainCmd.validate args
+  --mainCmd.validate args
+  plotSignSolCounts args[0]!.toNat!
+  return 0

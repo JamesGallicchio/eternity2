@@ -35,13 +35,14 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
 def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := varsToGet)
             (reportProgress : Bool := false) : IO (List (HashMap Var Bool))
             := do
-  IO.FS.createDirAll "cnf"
-  let cnfDir : FilePath := "./cnf"
+  let tempDir : FilePath := "temp"
+  IO.FS.createDirAll tempDir
+
   let tempFileName ← (do
     let mut num : Nat := 1
-    while ← (cnfDir / s!"temp{num}.cnf").pathExists do
+    while ← (tempDir / s!"temp{num}.cnf").pathExists do
       num := num + 1
-    return cnfDir / s!"temp{num}.cnf")
+    return tempDir / s!"temp{num}.cnf")
 
   enc.printFileDIMACS tempFileName.toString
 

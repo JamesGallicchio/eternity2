@@ -27,4 +27,8 @@ def colorCardConstraints(L : List Tile) (k : Nat) : EncCNF (List (Tile × Var)) 
     equalK border_pos (border_pos.size / 2)
     equalK center_pos (center_pos.size / 2)
 
+  -- Break polarity symmetry by assigning first tile to positive
+  for (_, v) in varList.head? do
+    addClause [v]
+
   return varList
