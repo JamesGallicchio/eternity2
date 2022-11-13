@@ -160,6 +160,11 @@ def TileSetVariables.diamondVarList (tsv : TileSetVariables psize colors) :=
   List.fins _ |>.map fun i =>
   tsv.diamond_vars d i
 
+def TileSetVariables.borderDiamondVarList (tsv : TileSetVariables psize colors) :=
+  Constraints.DiamondIndex.border _ |>.bind fun d =>
+  List.fins _ |>.map fun i =>
+  tsv.diamond_vars d i
+
 def tileIndices (psize : Nat) : List (Fin (psize.succ * psize.succ)) :=
   forIn (m := Id) [0:psize.succ * psize.succ] [] (fun x y => .yield (.ofNat x :: y))
 
@@ -309,7 +314,6 @@ private def classify (colors : Nat) (t : Tile) (h : t.colors.all (·.all (· ≤
   | d+1, 0, u+1, r+1
   | r+1, d+1, 0, u+1 => .border ⟨u,sorry⟩ ⟨r,sorry⟩ ⟨d,sorry⟩
   | w+1, x+1, y+1, z+1 =>
-  dbgTrace s!"{w} {x} {y} {z}" fun () =>
   let w : Fin colors.succ := ⟨w,sorry⟩
   let x : Fin colors.succ := ⟨x,sorry⟩
   let y : Fin colors.succ := ⟨y,sorry⟩
@@ -346,7 +350,7 @@ private def classify (colors : Nat) (t : Tile) (h : t.colors.all (·.all (· ≤
   else
     .allDiff w x y z
 
-def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := do
+def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool) : EncCNF Unit := do
   match psize, colors with
   | 0, _ | _, 0 => return
   | psize+1, colors+1 =>
@@ -368,11 +372,13 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) r]
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 2) d]
     | .fourSame urdl =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed at q, then all diamonds colored urdl -/
           for rot in [0,1,2,3] do
             EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds rot) urdl]
     | .threeSame urd l =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed at q, then one diamond must be l -/
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) l,
@@ -386,6 +392,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
             EncCNF.addClause [.not (tsv.piece_vars i q),
               tsv.diamond_vars (ds rot) urd, tsv.diamond_vars (ds (rot+1)) urd]
     | .twoNeighborPairs ur dl =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed at q, then one of each opposite pair must be ur -/
           for rot in [0,1] do
@@ -396,6 +403,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
             EncCNF.addClause [.not (tsv.piece_vars i q),
               tsv.diamond_vars (ds rot) dl, tsv.diamond_vars (ds (rot+2)) dl]
     | .twoOppositePairs ud rl =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed at q, then one of each adjacent pair must be ud -/
           for rot in [0,1,2,3] do
@@ -406,6 +414,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
             EncCNF.addClause [.not (tsv.piece_vars i q),
               tsv.diamond_vars (ds rot) rl, tsv.diamond_vars (ds (rot+1)) rl]
     | .oneNeighborPair ur d l =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed at q, then one of each opposite pair must be ur -/
           for rot in [0,1] do
@@ -420,6 +429,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
               .not (tsv.diamond_vars (ds rot) ur), .not (tsv.diamond_vars (ds (rot+1)) ur),
               tsv.diamond_vars (ds (rot+3)) l]
     | .oneOppositePair ud r l =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed at q, then one of each adjacent pair must be ud -/
           for rot in [0,1,2,3] do
@@ -432,6 +442,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
             EncCNF.addClause [.not (tsv.piece_vars i q),
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+2)) r]
     | .allDiff u r d l =>
+      if !onlyEdge then
         for (q,ds) in SquareIndex.center psize do
           /- if i placed t q, then if rot is [u,r,d,l] then rot+1 is [r,d,l,u] -/
           for rot in [0,1,2,3] do
@@ -444,7 +455,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := 
             EncCNF.addClause [.not (tsv.piece_vars i q),
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+1)) u]
 
-def puzzleConstraints (ts : TileSet size colors)
+def puzzleConstraints (ts : TileSet size colors) (onlyEdge : Bool := false)
   : ExceptT String EncCNF (TileSetVariables size.pred colors) := do
   match ts.tiles, size, colors with
   | _, 0, _ => throw "size must be greater than 0"
@@ -465,5 +476,5 @@ def puzzleConstraints (ts : TileSet size colors)
         ((decide_eq_true_iff _).mp h_uniq)
     pieceConstraints tsv
     diamondConstraints tsv
-    essentialConstraints tsv
+    essentialConstraints tsv onlyEdge
     return tsv

@@ -9,10 +9,10 @@ def genTileSet (size coreColors edgeColors : Nat) : IO (TileSet size coreColors)
   let t := DiamondBoard.tileBoard b false
   return t.tileSet coreColors
 
-def fetchEternity2Tiles : IO (TileSet 16 17) := do
-  let ts ← TileSet.fromFile "puzzles/e2pieces.txt"
+def fetchEternity2Tiles : IO (TileSet 16 22) := do
+  let ts ← TileSet.fromFile "../puzzles/e2pieces.txt"
   match ts with
-  | ⟨16, 17, tiles⟩ => return tiles
+  | ⟨16, 22, tiles⟩ => return tiles
   | ⟨size,colors,_⟩ => panic! s!"e2pieces.txt has size {size} and {colors} colors??"
 
 def plotSolCounts (name : String) (size : Nat)
@@ -62,6 +62,12 @@ def plotPuzzleSolCounts (size : Nat) : IO Unit := do
     | .ok tsv => 
       return tsv.diamondVarList
 
+def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
+  plotSolCounts "edgepuzzle" size fun _ ts => do
+    match ← Constraints.puzzleConstraints ts (onlyEdge := true) with
+    | .error s => panic! s!"it got sad :(\n{s}"
+    | .ok tsv => 
+      return tsv.borderDiamondVarList
 
 open Cli
 
@@ -102,6 +108,13 @@ def mainCmd := `[Cli|
 ]
 
 def main (args : List String) : IO UInt32 := do
-  --mainCmd.validate args
-  plotSignSolCounts args[0]!.toNat!
+  let e2 ← fetchEternity2Tiles
+  match EncCNF.new do
+    let _ ← Constraints.colorCardConstraints e2.tiles 17
+    return ← Constraints.puzzleConstraints e2 (onlyEdge := true)
+  with
+  | (.error s, _) => panic! s!"it got sad :(\n{s}"
+  | (.ok tsv, state) =>
+  let sols ← SATSolve.allSols state (reportProgress := true) tsv.borderDiamondVarList
+  IO.println s!"{sols.length}"
   return 0
