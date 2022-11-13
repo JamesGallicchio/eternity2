@@ -13,20 +13,18 @@ def TileBoard.tileSet (tb : TileBoard size) (colors : Nat) : TileSet size colors
 
 namespace TileSet
 
+def toFileFormat (ts : TileSet size colors) : String :=
+  s!"c {size}x{size} board with {colors} colors\n" ++
+  s!"p tile {size} {size}\n" ++
+  String.intercalate "\n"
+    ( ts.tiles.map (fun ⟨u,d,l,r,_⟩ =>
+        s!"{u.get!} {r.get!} {d.get!} {l.get!}")
+    ) ++ "\n"
+
+
 def toFile (filename : String) (ts : TileSet size colors) : IO Unit := do
-  let numColors :=
-    ts.tiles.foldl (fun acc ⟨a,b,c,d,_⟩ =>
-        [a,b,c,d].foldl (fun acc x => if x ≠ borderColor then acc.insert x () else acc) acc
-      ) (HashMap.empty)
-    |>.size
-  let contents :=
-    s!"p tile {size} {size} {numColors}\n" ++
-    String.intercalate "\n"
-      ( ts.tiles.map (fun ⟨u,d,l,r,_⟩ =>
-          s!"{u.get!} {r.get!} {d.get!} {l.get!}")
-      ) ++ "\n"
   IO.FS.withFile filename .write (fun handle =>
-    handle.putStr contents)
+    handle.putStr (toFileFormat ts))
 
 def fromFile (filename : String) : IO (Σ size colors, TileSet size colors) := do
   let contents ← IO.FS.withFile filename .read (fun handle =>

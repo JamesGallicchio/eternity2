@@ -1,3 +1,4 @@
+import Cli
 import Eternity2
 
 open Eternity2
@@ -29,22 +30,6 @@ def signSols (ts : TileSet size colors) (reportProgress : Bool := false) : IO (L
           sign := sol.find? v
                   |>.map (fun | true => .plus | false => .minus)})
       ⟩
-
-def decodeSol (tsv : Constraints.TileSetVariables size colors)
-              (s : Std.AssocList EncCNF.Var Bool) :=
-  show TileBoard size from {
-    board :=
-      Array.init _ (fun i =>
-        Array.init _ (fun j =>
-          List.fins _
-            |>.find? (fun p => s.find? (tsv.piece_vars p ⟨i,j⟩) |>.get!)
-            |>.map (tsv.tiles[·]!)
-            |>.getD ⟨none,none,none,none,none⟩
-      ))
-    board_size := sorry
-    isFinalized := true
-    finalize := sorry
-  }
 
 section variable (size : Nat) (iters := 100) (reportProgress := true)
 
@@ -107,26 +92,43 @@ def plotData (size : Nat) : IO Unit := do
       j := j + 1
     i := i + 1
 
-def main : IO Unit := do
-  let size := 3
-  let ts ← genTileSet size (size+2) 3
-  IO.println ts
+open Cli
 
-  let enc := EncCNF.new <| ExceptT.run do
-    let tsv ← Constraints.puzzleConstraints ts
-    match Constraints.tileIndices size.pred
-              |>.find? (tsv.tiles[·]!.isCorner)
-    with
-    | none => return tsv
-    | some p =>
-    EncCNF.addClause [⟨tsv.piece_vars p ⟨0,0⟩, false⟩]
-    return tsv
+def runGenTileSetCmd (p : Parsed) : IO UInt32 := do
+  IO.println "c generated randomly"
+  let size : Nat := p.flag! "size" |>.as! Nat
+  let colors : Nat := p.flag! "colors" |>.as! Nat
+  let bordercolors : Nat := p.flag! "bordercolors" |>.as! Nat
 
-  match enc with
-  | (.error s, _) => IO.println s!"failed to generate encoding: {s}"
-  | (.ok tsv, enc) =>
+  let colors := if colors = 0 then size + 1 else colors
+  let bordercolors := if bordercolors = 0 then size.sqrt + 1 else bordercolors
 
-  let sols ← SATSolve.allSols enc tsv.pieceVarList tsv.diamondVarList
-  IO.println s!"{sols.length} total solutions"
-  for s in sols do
-    IO.println (decodeSol tsv s)
+  let ts ← genTileSet size colors bordercolors
+  IO.println ts.toFileFormat
+
+  return 0
+
+
+def genTileSetCmd := `[Cli|
+  gen_tile_set VIA runGenTileSetCmd; ["0.0.1"]
+  "Generate a random tile set."
+
+  FLAGS:
+    size : Nat; "The height/width of the board"
+    colors : Nat; "The number of colors to fill the board with (0 means size+1)"
+    bordercolors : Nat; "The number of colors to fill the border with (0 means sqrt(size) + 1)"
+
+  EXTENSIONS:
+    defaultValues! #[("colors", "0"), ("bordercolors", "0")]
+]
+
+def mainCmd := `[Cli|
+  eternity2 NOOP; ["0.0.1"]
+  "Tools working towards a solution to Eternity II"
+
+  SUBCOMMANDS:
+    genTileSetCmd
+]
+
+def main (args : List String) : IO UInt32 := do
+  mainCmd.validate args

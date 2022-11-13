@@ -51,6 +51,9 @@ lean_exe eternity2 {
 require std from git
   "https://github.com/JamesGallicchio/std4" @ "iterators"
 
+require Cli from git
+  "https://github.com/mhuisi/lean4-cli" @ "nightly"
+
 script setup _args := do  
   if !( (← cadicalDir.pathExists)) then
     IO.println s!"Setting up cadical in new directory: {cadicalDir}"
