@@ -30,7 +30,7 @@ class Puzzle:
                     self.center_pos.append((i, j))
         self.positions = self.center_pos + self.corner_pos + self.border_pos
 
-    def encode(self, filename='out.cnf'):
+    def encode(self, filename, print_piece_vars):
         self.clauses = []
         self.create_rotational_piece_variables()
         self.clauses.extend(self.eop_clauses())
@@ -40,10 +40,15 @@ class Puzzle:
 
         self.clauses.extend(self.connection_rotational_clauses())
 
-        self.clauses.extend(self.guided_search(5))
+#        self.clauses.extend(self.guided_search(5))
 
         cnf = CNF(from_clauses=self.clauses)
         cnf.to_file(filename)
+        if print_piece_vars:
+            for key, value in self.V.items():
+                if (isinstance(key, tuple) and len(key) == 2 and
+                    len(key[0]) == 2 and isinstance(key[1], Piece)):
+                    print(value)
 
     def decode(self, solution_filename):
         fig = plt.figure()
@@ -220,10 +225,20 @@ class Puzzle:
     def parse(filename):
         pieces = []
         with open(filename, 'r') as f:
-            first_line_tokens = f.readline()[:-1].split(' ')
-            dims = list(map(int, first_line_tokens))
+            dims = None
             for line in f:
-                pieces.append(Piece.parse(line[:-1]))
+                if len(line) == 0 or line.startswith("c") or line.isspace():
+                    continue
+
+                if dims == None:
+                    first_line_tokens = line.split(' ')
+                    assert(first_line_tokens[0] == "p")
+                    assert(first_line_tokens[1] == "tile")
+                    assert(len(first_line_tokens) == 4)
+                    dims = list(map(int, first_line_tokens[2:]))
+                    assert(len(dims) == 2)
+                else:
+                    pieces.append(Piece.parse(line[:-1]))
 
         return Puzzle(pieces, dims)
 
