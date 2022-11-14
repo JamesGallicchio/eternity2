@@ -32,39 +32,41 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
   solveAux s varsToGet
 
 /-- Find all solutions to a given CNF -/
-def allSols (enc : State) (varsToGet : List Var) (varsToBlock : List Var := varsToGet)
-            (reportProgress : Bool := false) : IO (List (HashMap Var Bool))
+def allSols [Monad m] [MonadLiftT IO m] (enc : State) (varsToGet : List Var)
+            (varsToBlock : List Var := varsToGet)
+            (reportProgress : Bool := false)
+            (perItem : HashMap Var Bool → m Unit): m Unit
             := do
 
   let varsToGet := varsToGet.union varsToBlock
 
   let mut count := 0
-  let mut sols := []
   let mut satResult := SATSolve.solve enc varsToGet
 
-  let start ← IO.monoMsNow
+  let start ← liftM (n := IO) IO.monoMsNow
   let mut lastUpdateTime := 0
 
   while satResult.isSome do
-    let now ← IO.monoMsNow
+    let now ← liftM (n := IO) IO.monoMsNow
     if reportProgress && now - lastUpdateTime > 2000 then
       lastUpdateTime := now
       IO.print s!"\rfound {count} ({count*1000/(now-start)} / sec)"
-      (←IO.getStdout).flush
+      IO.FS.Stream.flush (← liftM (n := IO) IO.getStdout)
 
     match satResult with
     | none => panic! "Unreachable :( 12509814"
     | some (s, assn) =>
       count := count + 1
-      sols := assn :: sols
+      perItem assn
       let newClause : EncCNF.Clause :=
         varsToBlock.filterMap (fun v => assn.find? v |>.map (⟨v, ·⟩))
 
       satResult := SATSolve.addAndResolve s newClause varsToGet
 
   if reportProgress then
-    let duration := (←IO.monoMsNow) - start
+    let duration := (← liftM (n := IO) IO.monoMsNow) - start
     IO.println s!"\rfound {count} solutions in {duration}ms ({(1000*count)/duration} / sec)"
-    (←IO.getStdout).flush
+    let std ← liftM (n := IO) IO.getStdout
+    IO.FS.Stream.flush std
 
-  return sols
+  return

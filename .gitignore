@@ -3,6 +3,7 @@
 /lean/build
 /lean/lean_packages/*
 !/lean/lean_packages/manifest.json
+/lean/temp
 
 /py/__pycache__
 

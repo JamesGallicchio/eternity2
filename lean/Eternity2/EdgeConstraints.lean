@@ -478,3 +478,8 @@ def puzzleConstraints (ts : TileSet size colors) (onlyEdge : Bool := false)
     diamondConstraints tsv
     essentialConstraints tsv onlyEdge
     return tsv
+
+def fixCorner (ts : TileSetVariables size colors) : EncCNF Unit := do
+  -- Break rotational symmetry by assigning a corner to (0,0)
+  for (i, _) in ts.tiles.enum.find? (·.2.isCorner) do
+    addClause [ts.piece_vars ⟨i,sorry⟩ ⟨0,0⟩]

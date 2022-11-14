@@ -147,3 +147,10 @@ def Option.forIn [Monad m] (o : Option α) (b : β) (f : α → β → m (ForInS
 
 instance : ForIn m (Option α) α where
   forIn := Option.forIn
+
+def IO.timeMs (prog : IO α) : IO (Nat × α) := do
+  let start ← IO.monoMsNow
+  let res ← prog
+  let end_ ← IO.monoMsNow
+
+  return (end_ - start, res)

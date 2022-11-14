@@ -63,6 +63,8 @@ def solveAll (enc : EncCNF.State) (tsv : TileSetVariables psize colors)
   : IO (List (DiamondBoard psize.succ)) := do
   let pVars := tsv.pieceVarList
   let dVars := tsv.diamondVarList
-  return (←SATSolve.allSols enc (pVars ++ dVars))
-          |>.map fun assn =>
-            decodeDiamondBoard tsv assn
+  let sols : IO.Ref (List _) ← IO.mkRef []
+  SATSolve.allSols enc (pVars ++ dVars) (perItem := fun assn => do
+    sols.modify (decodeDiamondBoard tsv assn :: ·)
+  )
+  return ←sols.get
