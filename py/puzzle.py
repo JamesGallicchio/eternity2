@@ -3,7 +3,7 @@ from pysat.card import *
 import matplotlib.pyplot as plt
 
 
-side = 5
+PLOT_SIDE = 5
 
 class Puzzle:
     def __init__(self, pieces, dims):
@@ -30,17 +30,18 @@ class Puzzle:
                     self.center_pos.append((i, j))
         self.positions = self.center_pos + self.corner_pos + self.border_pos
 
-    def encode(self, filename, print_piece_vars):
+    def encode(self, filename='out.cnf', print_piece_vars=False, cardinality_encoding=1, only_border=False):
         self.clauses = []
+        self.__init__(self.pieces, self.dims) # reset to original state, makes function idempotent.
+        self.only_border = only_border
         self.create_rotational_piece_variables()
-        self.clauses.extend(self.eop_clauses())
+        self.clauses.extend(self.eop_clauses(cardinality_encoding))
 
         self.create_diamond_variables()
         self.clauses.extend(self.alocd_clauses())
 
         self.clauses.extend(self.connection_rotational_clauses())
-
-#        self.clauses.extend(self.guided_search(5))
+        self.clauses.append([self.V[(self.corner_pos[0], self.corner_pieces[0])]])
 
         cnf = CNF(from_clauses=self.clauses)
         cnf.to_file(filename)
@@ -65,7 +66,6 @@ class Puzzle:
         for pos in self.corner_pos:
             for piece in self.corner_pieces:
                 if self.V[(pos, piece)] in positive_set:
-                    print(f'CORNER: at pos {pos} goes piece = {piece.color_seq}')
                     triangles = piece_to_triangles(piece, pos)
                     for t in triangles:
                         plt.gca().add_patch(t)
@@ -73,7 +73,6 @@ class Puzzle:
         for pos in self.border_pos:
             for piece in self.border_pieces:
                 if self.V[(pos, piece)] in positive_set:
-                    print(f'BORDER: at pos {pos} goes piece = {piece.color_seq}')
                     triangles = piece_to_triangles(piece, pos)
                     for t in triangles:
                         plt.gca().add_patch(t)
@@ -82,19 +81,15 @@ class Puzzle:
             for piece in self.center_pieces:
                 for rot in range(4):
                     if self.V[(pos, piece, rot)] in positive_set:
-                        print(f'at pos = {pos} goes piece = {piece.color_seq} with rotation = {rot}')
                         triangles = piece_to_triangles(piece, pos, rot)
                         for t in triangles:
                             plt.gca().add_patch(t)
 
-        for pos in self.diamonds_pos:
-            for color in range(1, self.colors):
-                if self.V[(pos, color)] in positive_set:
-                    print(f'CENTER: diamond pos = {pos}, color = {color}')
-
         n, m = self.dims
-        plt.xlim([0, side*m])
-        plt.ylim([0, side*n])
+        plt.tick_params(top=False, bottom=False, left=False, right=False,
+                labelleft=False, labelbottom=False)
+        plt.xlim([0, PLOT_SIDE*m])
+        plt.ylim([0, PLOT_SIDE*n])
 
         plt.show()
 
@@ -105,10 +100,11 @@ class Puzzle:
         for pos in self.border_pos:
             for piece in self.border_pieces:
                 self.V[(pos, piece)] = len(self.V) + 1
-        for pos in self.center_pos:
-            for piece in self.center_pieces:
-                for rot in range(4):
-                    self.V[(pos, piece, rot)] = len(self.V) + 1
+        if not self.only_border:
+            for pos in self.center_pos:
+                for piece in self.center_pieces:
+                    for rot in range(4):
+                        self.V[(pos, piece, rot)] = len(self.V) + 1
 
     def create_diamond_variables(self):
         n, m = self.dims
@@ -120,9 +116,11 @@ class Puzzle:
         cnt = 1
         for i in range(n):
             for j in range(m):
+                if self.only_border and not is_border(i, j, self.dims): continue
                 for vdir in vdirs:
                     di, dj = vdir
                     ni, nj = i+di, j+dj
+                    if self.only_border and not is_border(ni, nj, self.dims): continue
                     if ni < n and nj < m:
                         diamond_pos = ((i, j), (ni, nj))
                         self.diamonds_pos.append(diamond_pos)
@@ -131,28 +129,31 @@ class Puzzle:
                             cnt += 1
 
     # each piece needs to be in exactly one position
-    def eop_clauses(self):
+    def eop_clauses(self, encoding_type):
         ans = []
         # note: it is crucial that these long clauses go first, so that way the top-id correctly matches len(self.V)
         for pos in self.corner_pos:
             ans.append([self.V[(pos, piece)] for piece in self.corner_pieces])
         for pos in self.border_pos:
             ans.append([self.V[(pos, piece)] for piece in self.border_pieces])
-        for pos in self.center_pos:
-            ans.append([self.V[(pos, piece, rot)] for piece in self.center_pieces for rot in range(4)])
+        if not self.only_border:
+            for pos in self.center_pos:
+                ans.append([self.V[(pos, piece, rot)] for piece in self.center_pieces for rot in range(4)])
+
         # cardinality constraints 
         for piece in self.corner_pieces:
             t_id = CNF(from_clauses=self.clauses+ans).nv
-            card_clauses = CardEnc.equals(lits=[self.V[(pos, piece)] for pos in self.corner_pos], top_id=t_id, encoding=1)
+            card_clauses = CardEnc.equals(lits=[self.V[(pos, piece)] for pos in self.corner_pos], top_id=t_id, encoding=encoding_type)
             ans.extend(card_clauses.clauses)
         for piece in self.border_pieces:
             t_id = CNF(from_clauses=self.clauses+ans).nv
-            card_clauses = CardEnc.equals(lits=[self.V[(pos, piece)] for pos in self.border_pos], top_id=t_id, encoding=1)
+            card_clauses = CardEnc.equals(lits=[self.V[(pos, piece)] for pos in self.border_pos], top_id=t_id, encoding=encoding_type)
             ans.extend(card_clauses.clauses)
-        for piece in self.center_pieces:
-            t_id =  CNF(from_clauses=self.clauses+ans).nv
-            card_clauses = CardEnc.equals(lits=[self.V[(pos, piece, rot)] for pos in self.center_pos for rot in range(4)], top_id=t_id, encoding = 1)
-            ans.extend(card_clauses.clauses)
+        if not self.only_border:
+            for piece in self.center_pieces:
+                t_id =  CNF(from_clauses=self.clauses+ans).nv
+                card_clauses = CardEnc.equals(lits=[self.V[(pos, piece, rot)] for pos in self.center_pos for rot in range(4)], top_id=t_id, encoding=encoding_type)
+                ans.extend(card_clauses.clauses)
         return ans
 
     # enforce at least one color per diamond.
@@ -217,8 +218,9 @@ class Puzzle:
             mask[1] = '0'
         ans = []
         for piece in self.pieces:
-            rotation =  piece.match(mask)
-            if rotation != -1: ans.append((piece, rotation))
+            rotation = piece.match(mask)
+            if rotation != -1:
+                ans.append((piece, rotation))
         return ans
 
     @staticmethod
@@ -317,10 +319,11 @@ def piece_to_triangles(piece, pos, rot=None):
         colors.append(list_of_cols[piece.color_seq[(ix + rot)%4]])
     
     x, y = j, i
-    ans.append(plt.Polygon([(x*side, y*side), (x*side+side, y*side), (x*side + side/2, y*side+side/2)], facecolor=colors[0], edgecolor='black', lw=1))
-    ans.append(plt.Polygon([(x*side+side, y*side), (x*side+side, y*side+side), (x*side + side/2, y*side+side/2)], facecolor=colors[1], edgecolor='black', lw=1))
-    ans.append(plt.Polygon([(x*side+side, y*side+side), (x*side, y*side+side), (x*side + side/2, y*side+side/2)], facecolor=colors[2], edgecolor='black', lw=1))
-    ans.append(plt.Polygon([(x*side, y*side+side), (x*side, y*side), (x*side + side/2, y*side+side/2)], facecolor=colors[3], edgecolor='black', lw=1))
-#ans.append(plt.Polygon([(x*side, y*side), (x*side+side, y*side+side), color='black']))
+    ans.append(plt.Polygon([(x*PLOT_SIDE, y*PLOT_SIDE), (x*PLOT_SIDE+PLOT_SIDE, y*PLOT_SIDE), (x*PLOT_SIDE + PLOT_SIDE/2, y*PLOT_SIDE+PLOT_SIDE/2)], facecolor=colors[0], edgecolor='black', lw=1))
+    ans.append(plt.Polygon([(x*PLOT_SIDE+PLOT_SIDE, y*PLOT_SIDE), (x*PLOT_SIDE+PLOT_SIDE, y*PLOT_SIDE+PLOT_SIDE), (x*PLOT_SIDE + PLOT_SIDE/2, y*PLOT_SIDE+PLOT_SIDE/2)], facecolor=colors[1], edgecolor='black', lw=1))
+    ans.append(plt.Polygon([(x*PLOT_SIDE+PLOT_SIDE, y*PLOT_SIDE+PLOT_SIDE), (x*PLOT_SIDE, y*PLOT_SIDE+PLOT_SIDE), (x*PLOT_SIDE + PLOT_SIDE/2, y*PLOT_SIDE+PLOT_SIDE/2)], facecolor=colors[2], edgecolor='black', lw=1))
+    ans.append(plt.Polygon([(x*PLOT_SIDE, y*PLOT_SIDE+PLOT_SIDE), (x*PLOT_SIDE, y*PLOT_SIDE), (x*PLOT_SIDE + PLOT_SIDE/2, y*PLOT_SIDE+PLOT_SIDE/2)], facecolor=colors[3], edgecolor='black', lw=1))
     return ans
 
+def is_border(i,j, dims):
+    return i == 0 or j == 0 or i == dims[0] or j == dims[1]
