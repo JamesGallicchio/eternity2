@@ -7,317 +7,173 @@ open Std EncCNF
 
 /- Implement constraints as described in Heule 2008 -/
 
-structure SquareIndex (size : Nat) where
-  row : Fin size
-  col : Fin size
-deriving Repr
-
-inductive DiamondIndex (psize : Nat) where
-/-- col refers to the left triangle's column -/
-| horz (row : Fin psize.succ) (col : Fin psize)
-/-- row refers to the top triangle's row -/
-| vert (row : Fin psize) (col : Fin psize.succ)
-deriving Repr
-
-namespace SquareIndex
-
-def toFin : SquareIndex size → Fin (size * size)
-| ⟨⟨i,hi⟩,⟨j,hj⟩⟩ => ⟨i * size + j, by
-  cases size; case zero => contradiction
-  case succ ps =>
-  apply Nat.lt_of_succ_le
-  rw [←Nat.add_succ]
-  conv => rhs; rw [Nat.succ_mul]
-  apply Nat.add_le_add
-  apply Nat.mul_le_mul_right
-  apply Nat.le_of_succ_le_succ hi
-  exact hj⟩
-
-private def maxIdx {psize : Nat} : Fin psize.succ := ⟨psize, Nat.lt_succ_self _⟩
-
-private def middleFins (psize : Nat) : List ((i : Fin psize.succ) ×' (0 : Nat) < i ∧ i < psize) :=
-  forIn' (m := Id) [1:psize] [] (fun x h y =>
-    .yield (⟨⟨x, by exact Nat.le_step h.2⟩, by simp [h.2]; exact h.1⟩ :: y))
-
-private def up : (i j : Fin psize.succ) → i.val > 0 → DiamondIndex psize
-| i, j, h => .vert ⟨i-1, by
-  match i with | ⟨i+1,h⟩ => simp; exact Nat.lt_of_succ_lt_succ h⟩ j
-
-private def left : (i j : Fin psize.succ) → j.val > 0 → DiamondIndex psize
-| i, j, h => .horz i ⟨j-1, by
-  match j with | ⟨j+1,h⟩ => simp; exact Nat.lt_of_succ_lt_succ h⟩
-
-private def down : (i j : Fin psize.succ) → i.val < psize → DiamondIndex psize
-| i, j, h => .vert ⟨i, h⟩ j
-
-private def right : (i j : Fin psize.succ) → j.val < psize → DiamondIndex psize
-| i, j, h => .horz i ⟨j, h⟩
-
-
-def corners (psize : Nat) : List (SquareIndex psize.succ.succ × (Fin 2 → DiamondIndex psize.succ)) :=
-  [ (⟨0,0⟩, fun
-        | 0 => right  0 0             (Nat.zero_lt_succ _)
-        | 1 => down   0 0             (Nat.zero_lt_succ _))
-  , (⟨0, maxIdx⟩, fun
-        | 0 => down   0 maxIdx        (Nat.zero_lt_succ _)
-        | 1 => left   0 maxIdx        (by simp [maxIdx, Nat.zero_lt_succ]))
-  , (⟨maxIdx, maxIdx⟩, fun
-        | 0 => left   maxIdx maxIdx   (by simp [maxIdx, Nat.zero_lt_succ])
-        | 1 => up     maxIdx maxIdx   (by simp [maxIdx, Nat.zero_lt_succ]))
-  , (⟨maxIdx, 0⟩, fun
-        | 0 => up     maxIdx 0        (by simp [maxIdx, Nat.zero_lt_succ])
-        | 1 => right  maxIdx 0        (Nat.zero_lt_succ _))
-  ]
-
-def borders (psize : Nat) : List (SquareIndex psize.succ.succ × (Fin 3 → DiamondIndex psize.succ)) :=
-  middleFins psize.succ |>.bind fun ⟨i,h⟩ =>
-    [ (⟨0, i⟩, fun
-        | 0 => right  0 i   h.2
-        | 1 => down   0 i   (Nat.zero_lt_succ _)
-        | 2 => left   0 i   h.1)
-    , (⟨i, 0⟩, fun
-        | 0 => up     i 0   h.1
-        | 1 => right  i 0   (Nat.zero_lt_succ _)
-        | 2 => down   i 0   h.2)
-    , (⟨maxIdx, i⟩, fun
-        | 0 => left   maxIdx i  h.1
-        | 1 => up     maxIdx i  (by simp [maxIdx, Nat.zero_lt_succ])
-        | 2 => right  maxIdx i  h.2)
-    , (⟨i, maxIdx⟩, fun
-        | 0 => down   i maxIdx  h.2
-        | 1 => left   i maxIdx  (by simp [maxIdx, Nat.zero_lt_succ])
-        | 2 => up     i maxIdx  h.1)
-    ]
-
-def center (psize : Nat) : List (SquareIndex psize.succ.succ × (Fin 4 → DiamondIndex psize.succ)) :=
-  middleFins psize.succ |>.bind fun ⟨x,hx⟩ =>
-    middleFins psize.succ |>.map fun ⟨y,hy⟩ =>
-      (⟨x,y⟩, fun
-        | 0 => up     x y   hx.1
-        | 1 => right  x y   hy.2
-        | 2 => down   x y   hx.2
-        | 3 => left   x y   hy.1)
-
-def all (size : Nat) : List (SquareIndex size) :=
-  List.fins size |>.bind fun i =>
-    List.fins size |>.map fun j =>
-      ⟨i,j⟩
-
-end SquareIndex
-
-namespace DiamondIndex
-
-def toFin : DiamondIndex psize → Fin (2 * (psize * psize.succ))
-| horz ⟨i,hi⟩ ⟨j,hj⟩ => ⟨i * (psize + psize.succ) + j, by sorry⟩
-| vert ⟨i,hi⟩ ⟨j,hj⟩ => ⟨i * (psize + psize.succ) + psize + j, by sorry⟩
-
-private def maxIdx {psize : Nat} : Fin psize.succ := ⟨psize, Nat.lt_succ_self _⟩
-private def majorFins (psize : Nat) : List (Fin psize.succ) :=
-  forIn (m := Id) [0:psize.succ] [] (fun x y => .yield (.ofNat x :: y))
-private def middleFins (psize : Nat) : List (Fin psize.succ) :=
-  forIn (m := Id) [1:psize] [] (fun x y => .yield (.ofNat x :: y))
-private def minorFins (psize : Nat) : List (Fin psize) :=
-  forIn' (m := Id) [0:psize] [] (fun x h y => .yield (⟨x,by exact h.2⟩ :: y))
-
-def all (psize : Nat) : List (DiamondIndex psize) :=
-  majorFins psize |>.bind fun i =>
-    minorFins psize |>.bind fun j =>
-      [ .horz i j
-      , .vert j i ]
-
-def border (psize : Nat) : List (DiamondIndex psize) :=
-  minorFins psize |>.bind fun i =>
-    [ .horz 0 i
-    , .horz maxIdx i
-    , .vert i 0
-    , .vert i maxIdx ]
-
-def center (psize : Nat) : List (DiamondIndex psize) :=
-  middleFins psize |>.bind fun i =>
-    minorFins psize |>.bind fun j =>
-      [ .horz i j
-      , .vert j i ]
-
-end DiamondIndex
-
-structure TileSetVariables (psize : Nat) (colors : Nat) where
-  tiles : List Tile
-  h_ts : tiles.length = psize.succ * psize.succ
-  h_colors : tiles.all (·.colors.all (·.all (· ≤ colors)))
+structure TileSetVariables (size b c : Nat) where
+  tiles : List (Tile (Color.withBorder b c))
+  h_ts : tiles.length = size * size
   h_ts_uniq : tiles.isDistinct
-  piece_vars : Fin (psize.succ * psize.succ) → SquareIndex psize.succ → Var
-  /-- color 0 here is color 1 elsewhere -/
-  diamond_vars : DiamondIndex psize → Fin colors → Var
+  piece_vars : Fin (size * size) → SquareIndex size → Var
+  diamond_vars : DiamondIndex size → Fin (b+c+1) → Var
 
-def TileSetVariables.pieceVarList (tsv : TileSetVariables psize colors) :=
+namespace TileSetVariables
+
+variable (tsv : TileSetVariables size b c)
+
+def pieceVarList :=
   List.fins _ |>.bind fun p =>
   List.fins _ |>.bind fun r =>
   List.fins _ |>.map fun c =>
   tsv.piece_vars p ⟨r,c⟩
 
-def TileSetVariables.diamondVarList (tsv : TileSetVariables psize colors) :=
-  Constraints.DiamondIndex.all _ |>.bind fun d =>
+def diamondVarList :=
+  DiamondIndex.all _ |>.bind fun d =>
   List.fins _ |>.map fun i =>
   tsv.diamond_vars d i
 
-def TileSetVariables.borderDiamondVarList (tsv : TileSetVariables psize colors) :=
-  Constraints.DiamondIndex.border _ |>.bind fun d =>
+def borderDiamondVarList :=
+  DiamondIndex.border _ |>.bind fun d =>
   List.fins _ |>.map fun i =>
   tsv.diamond_vars d i
 
-def tileIndices (psize : Nat) : List (Fin (psize.succ * psize.succ)) :=
-  forIn (m := Id) [0:psize.succ * psize.succ] [] (fun x y => .yield (.ofNat x :: y))
+def frameDiamondVarList :=
+  DiamondIndex.frame _ |>.bind fun d =>
+  List.fins _ |>.map fun i =>
+  tsv.diamond_vars d i
 
-private def cornerTiles (tsv : TileSetVariables s c) := tileIndices s |>.filterMap (fun i =>
-  let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-  let tile := tsv.tiles[i']
-  if tile.isCorner then some (tile,i) else none)
-private def borderTiles (tsv : TileSetVariables s c) := tileIndices s |>.filterMap (fun i =>
-  let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-  let tile := tsv.tiles[i']
-  if tile.isBorder then some (tile,i) else none)
-private def centerTiles (tsv : TileSetVariables s c) := tileIndices s |>.filterMap (fun i =>
-  let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-  let tile := tsv.tiles[i']
-  if tile.isCenter then some (tile,i) else none)
+private def cornerTiles :=
+  List.fins _ |>.filterMap (fun i =>
+    let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+    let tile := tsv.tiles[i']
+    if tile.isCorner then some (tile,i) else none)
+private def sideTiles :=
+  List.fins _ |>.filterMap (fun i =>
+    let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+    let tile := tsv.tiles[i']
+    if tile.isSide then some (tile,i) else none)
+private def centerTiles :=
+  List.fins _ |>.filterMap (fun i =>
+    let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
+    let tile := tsv.tiles[i']
+    if tile.isCenter then some (tile,i) else none)
 
-def mkVars (tiles : List Tile) (psize colors : Nat)
-  (h_ts : tiles.length = psize.succ * psize.succ)
-  (h_colors : tiles.all (·.colors.all (·.all (· ≤ colors))))
+end TileSetVariables
+
+def mkVars (tiles : List (Tile (Color.withBorder b c))) (size : Nat)
+  (h_ts : tiles.length = size * size)
   (h_uniq : tiles.isDistinct)
-  : EncCNF (TileSetVariables psize colors) := do
-  let pvs ← EncCNF.mkVarBlock "x" [psize.succ*psize.succ, psize.succ*psize.succ]
-  let dvs ← EncCNF.mkVarBlock "y" [2 * (psize * psize.succ), colors]
-  return ⟨tiles, h_ts, h_colors, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
+  : EncCNF (TileSetVariables size b c) := do
+  let pvs ← EncCNF.mkVarBlock "x" [size*size, size*size]
+  let dvs ← EncCNF.mkVarBlock "y" [2 * (size * size.succ), b+c+1]
+  return ⟨tiles, h_ts, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
 
-def pieceConstraints (tsv : TileSetVariables size colors) : EncCNF Unit := do
-  match size with
-  | 0 => return
-  | psize+1 =>
-
+def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
+  
   /- Each square has a tile -/
-  for (q,_) in SquareIndex.corners psize do
-    EncCNF.addClause (cornerTiles tsv |>.map (tsv.piece_vars ·.2 q))
+  for (q,_) in SquareIndex.corners size do
+    EncCNF.addClause (tsv.cornerTiles |>.map (tsv.piece_vars ·.2 q))
 
-  for (q,_) in SquareIndex.borders psize do
-    EncCNF.addClause (borderTiles tsv |>.map (tsv.piece_vars ·.2 q))
+  for (q,_) in SquareIndex.sides size do
+    EncCNF.addClause (tsv.sideTiles |>.map (tsv.piece_vars ·.2 q))
 
-  for (q,_) in SquareIndex.center psize do
-    EncCNF.addClause (centerTiles tsv |>.map (tsv.piece_vars ·.2 q))
+  for (q,_) in SquareIndex.center size do
+    EncCNF.addClause (tsv.centerTiles |>.map (tsv.piece_vars ·.2 q))
 
   /- Each tile has a square -/
-  for (_,p) in cornerTiles tsv do
-    EncCNF.addClause (SquareIndex.corners psize |>.map (tsv.piece_vars p ·.1))
+  for (_,p) in tsv.cornerTiles do
+    EncCNF.addClause (SquareIndex.corners size |>.map (tsv.piece_vars p ·.1))
 
-  for (_,p) in borderTiles tsv do
-    EncCNF.addClause (SquareIndex.borders psize |>.map (tsv.piece_vars p ·.1))
+  for (_,p) in tsv.sideTiles do
+    EncCNF.addClause (SquareIndex.sides size |>.map (tsv.piece_vars p ·.1))
 
-  for (_,p) in centerTiles tsv do
-    EncCNF.addClause (SquareIndex.center psize |>.map (tsv.piece_vars p ·.1))
+  for (_,p) in tsv.centerTiles do
+    EncCNF.addClause (SquareIndex.center size |>.map (tsv.piece_vars p ·.1))
 
   /- Eliminate mismatched square/tile types -/
-  for (_,p) in cornerTiles tsv do
-    for (q,_) in SquareIndex.borders psize do
+  for (_,p) in tsv.cornerTiles do
+    for (q,_) in SquareIndex.sides size do
       EncCNF.addClause [.not (tsv.piece_vars p q)]
-    for (q,_) in SquareIndex.center psize do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
-
-  for (_,p) in borderTiles tsv do
-    for (q,_) in SquareIndex.corners psize do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
-    for (q,_) in SquareIndex.center psize do
+    for (q,_) in SquareIndex.center size do
       EncCNF.addClause [.not (tsv.piece_vars p q)]
 
-  for (_,p) in centerTiles tsv do
-    for (q,_) in SquareIndex.corners psize do
+  for (_,p) in tsv.sideTiles do
+    for (q,_) in SquareIndex.corners size do
       EncCNF.addClause [.not (tsv.piece_vars p q)]
-    for (q,_) in SquareIndex.borders psize do
+    for (q,_) in SquareIndex.center size do
+      EncCNF.addClause [.not (tsv.piece_vars p q)]
+
+  for (_,p) in tsv.centerTiles do
+    for (q,_) in SquareIndex.corners size do
+      EncCNF.addClause [.not (tsv.piece_vars p q)]
+    for (q,_) in SquareIndex.sides size do
       EncCNF.addClause [.not (tsv.piece_vars p q)]
 
 
-def diamondConstraints (tsv : TileSetVariables psize colors) : EncCNF Unit := do
-  let borderColors : List (Fin colors) :=
-      tsv.tiles.bind (·.getBorderColors) |>.filterMap (fun
-        | none => none
-        | some 0 => none
-        | some (.succ i) => if h : i < colors then some ⟨i,h⟩ else none
-      ) |>.distinct
-  let centerColors : List (Fin colors) :=
-      tsv.tiles.bind (·.getCenterColors) |>.filterMap (fun
-        | none => none
-        | some 0 => none
-        | some (.succ i) => if h : i < colors then some ⟨i,h⟩ else none
-      ) |>.distinct
+/-- Constrain each diamond has exactly one color (of the right type) -/
+def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
+  /- Frame (always frameColor) -/
+  for d in DiamondIndex.frame size do
+    EncCNF.addClause [tsv.diamond_vars d (Color.frameColor)]
 
-  /- Each diamond has exactly one color (of the right type) -/
-  for d in DiamondIndex.border psize do
-    EncCNF.addClause (borderColors.map (tsv.diamond_vars d ·))
+  /- Border -/
+  for d in DiamondIndex.border size do
+    EncCNF.addClause (Color.borderColors.map (tsv.diamond_vars d ·))
 
-    for c in borderColors do
-      for c' in borderColors do
-        if c < c' then
+    /- AMO constraint, defined pairwise -/
+    for c in Color.borderColors do
+      for c' in Color.borderColors do
+        if c.val < c'.val then
           EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
-    
-    for c in List.fins _ do
-      if !(c ∈ borderColors) then
-        EncCNF.addClause [.not (tsv.diamond_vars d c)]
-
-  for d in DiamondIndex.center psize do
-    EncCNF.addClause (centerColors.map (tsv.diamond_vars d ·))
   
-    for c in centerColors do
-      for c' in centerColors do
-        if c < c' then
+  for d in DiamondIndex.center size do
+    EncCNF.addClause (Color.centerColors.map (tsv.diamond_vars d ·))
+  
+    for c in Color.centerColors do
+      for c' in Color.centerColors do
+        if c.val < c'.val then
           EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
 
-    for c in List.fins _ do
-      if !(c ∈ centerColors) then
-        EncCNF.addClause [.not (tsv.diamond_vars d c)]
 
 /- Piece classification for essential constraints -/
-private inductive PieceClass (colors : Nat)
-| corner            (u r      : Fin colors)
-| border            (u r d    : Fin colors)
-| fourSame          (urdl     : Fin colors)
-| threeSame         (urd l    : Fin colors)
-| twoNeighborPairs  (ur dl    : Fin colors)
-| twoOppositePairs  (ud rl    : Fin colors)
-| oneNeighborPair   (ur d l   : Fin colors)
-| oneOppositePair   (ud r l   : Fin colors)
-| allDiff           (u r d l  : Fin colors)
+private inductive PieceClass (color : Type u)
+| corner            (u r      : color)
+| side              (u r d    : color)
+| fourSame          (urdl     : color)
+| threeSame         (urd l    : color)
+| twoNeighborPairs  (ur dl    : color)
+| twoOppositePairs  (ud rl    : color)
+| oneNeighborPair   (ur d l   : color)
+| oneOppositePair   (ud r l   : color)
+| allDiff           (u r d l  : color)
 deriving Repr
 
-instance : ToString (PieceClass colors) where
+instance [Repr c] : ToString (PieceClass c) where
   toString x := (repr x).pretty
 
-instance (c : Nat) : Inhabited (PieceClass c.succ) := ⟨.corner 0 0⟩
+instance (b c : Nat) : Inhabited (PieceClass (Color.withBorder b c)) :=
+  ⟨.corner ⟨0,Nat.zero_lt_succ _⟩ ⟨0, Nat.zero_lt_succ _⟩⟩
 
-private def classify (colors : Nat) (t : Tile) (h : t.colors.all (·.all (· ≤ colors.succ))) : PieceClass colors.succ :=
+private def classify (t : Tile (Color.withBorder b c))
+  : PieceClass (Color.withBorder b c) :=
   match t with
-  | ⟨none, _, _, _, _⟩
-  | ⟨_, none, _, _, _⟩
-  | ⟨_, _, none, _, _⟩
-  | ⟨_, _, _, none, _⟩ => panic! "unreachable 290581052"
-  | ⟨some u, some d, some l, some r, _⟩ =>
+  | {up, right, down, left} =>
   /- rotate to put color at u, border at l (if possible) -/
-  match u,r,d,l with
+  match up.val,right.val,down.val,left.val with
   | 0, 0, 0, 0
   | _+1, 0, 0, 0 | 0, _+1, 0, 0 | 0, 0, _+1, 0 | 0, 0, 0, _+1
   | 0, _+1, 0, _+1 | _+1, 0, _+1, 0
-     => panic! t.toString
+     => panic! s!"Encountered invalid piece during solving:\n{t.toString}"
   | u+1, r+1, 0, 0
   | 0, u+1, r+1, 0
   | 0, 0, u+1, r+1
-  | r+1, 0, 0, u+1 => .corner ⟨u,sorry⟩ ⟨r,sorry⟩
+  | r+1, 0, 0, u+1 => .corner ⟨u+1,sorry⟩ ⟨r+1,sorry⟩
   | u+1, r+1, d+1, 0
   | 0, u+1, r+1, d+1
   | d+1, 0, u+1, r+1
-  | r+1, d+1, 0, u+1 => .border ⟨u,sorry⟩ ⟨r,sorry⟩ ⟨d,sorry⟩
+  | r+1, d+1, 0, u+1 => .side ⟨u+1,sorry⟩ ⟨r+1,sorry⟩ ⟨d+1,sorry⟩
   | w+1, x+1, y+1, z+1 =>
-  let w : Fin colors.succ := ⟨w,sorry⟩
-  let x : Fin colors.succ := ⟨x,sorry⟩
-  let y : Fin colors.succ := ⟨y,sorry⟩
-  let z : Fin colors.succ := ⟨z,sorry⟩
+  let w : Color.withBorder b c := ⟨w+1,sorry⟩
+  let x : Color.withBorder b c := ⟨x+1,sorry⟩
+  let y : Color.withBorder b c := ⟨y+1,sorry⟩
+  let z : Color.withBorder b c := ⟨z+1,sorry⟩
   /- so much casework-/
   if w = x ∧ x = y ∧ y = z then
     .fourSame w
@@ -350,36 +206,32 @@ private def classify (colors : Nat) (t : Tile) (h : t.colors.all (·.all (· ≤
   else
     .allDiff w x y z
 
-def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool) : EncCNF Unit := do
-  match psize, colors with
-  | 0, _ | _, 0 => return
-  | psize+1, colors+1 =>
-  for _h : i in tileIndices psize.succ do
-    match
+def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : EncCNF Unit := do
+  for _h : i in List.fins _ do
+    match (
       let i' : Fin tsv.tiles.length := ⟨i.val, by rw [tsv.h_ts]; exact i.isLt⟩
-      let res := classify colors tsv.tiles[i'] sorry
-      res
-    with
+      classify tsv.tiles[i']
+    ) with
     | .corner u r =>
-        for (q,ds) in SquareIndex.corners psize do
+        for (q,ds) in SquareIndex.corners size do
           /- if i placed at q, then diamond1 colored u ∧ diamond2 colored r -/
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) u]
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) r]
-    | .border u r d =>
-        for (q,ds) in SquareIndex.borders psize do
+    | .side u r d =>
+        for (q,ds) in SquareIndex.sides size do
           /- if i placed at q, then diamond1 colored u ∧ diamond2 colored r ∧ diamond3 colored d -/
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) u]
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) r]
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 2) d]
     | .fourSame urdl =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then all diamonds colored urdl -/
           for rot in [0,1,2,3] do
             EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds rot) urdl]
     | .threeSame urd l =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one diamond must be l -/
           EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) l,
             tsv.diamond_vars (ds 1) l, tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l]
@@ -393,7 +245,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool)
               tsv.diamond_vars (ds rot) urd, tsv.diamond_vars (ds (rot+1)) urd]
     | .twoNeighborPairs ur dl =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each opposite pair must be ur -/
           for rot in [0,1] do
             EncCNF.addClause [.not (tsv.piece_vars i q),
@@ -404,7 +256,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool)
               tsv.diamond_vars (ds rot) dl, tsv.diamond_vars (ds (rot+2)) dl]
     | .twoOppositePairs ud rl =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each adjacent pair must be ud -/
           for rot in [0,1,2,3] do
             EncCNF.addClause [.not (tsv.piece_vars i q),
@@ -415,7 +267,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool)
               tsv.diamond_vars (ds rot) rl, tsv.diamond_vars (ds (rot+1)) rl]
     | .oneNeighborPair ur d l =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each opposite pair must be ur -/
           for rot in [0,1] do
             EncCNF.addClause [.not (tsv.piece_vars i q),
@@ -430,7 +282,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool)
               tsv.diamond_vars (ds (rot+3)) l]
     | .oneOppositePair ud r l =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each adjacent pair must be ud -/
           for rot in [0,1,2,3] do
             EncCNF.addClause [.not (tsv.piece_vars i q),
@@ -443,7 +295,7 @@ def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool)
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+2)) r]
     | .allDiff u r d l =>
       if !onlyEdge then
-        for (q,ds) in SquareIndex.center psize do
+        for (q,ds) in SquareIndex.center size do
           /- if i placed t q, then if rot is [u,r,d,l] then rot+1 is [r,d,l,u] -/
           for rot in [0,1,2,3] do
             EncCNF.addClause [.not (tsv.piece_vars i q),
@@ -455,31 +307,39 @@ def essentialConstraints (tsv : TileSetVariables psize colors) (onlyEdge : Bool)
             EncCNF.addClause [.not (tsv.piece_vars i q),
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+1)) u]
 
-def puzzleConstraints (ts : TileSet size colors) (onlyEdge : Bool := false)
-  : ExceptT String EncCNF (TileSetVariables size.pred colors) := do
-  match ts.tiles, size, colors with
-  | _, 0, _ => throw "size must be greater than 0"
-  | _, _, 0 => throw "colors must be greater than 0"
-  | tiles, psize+1, pcolors+1 =>
-  match h_ts : decide <| tiles.length = psize.succ * psize.succ with
-  | false => throw s!"wrong number of tiles in tileset; expected {psize.succ * psize.succ} but got {tiles.length}"
-  | true =>
-  match h_colors : decide <| _ with
-  | false => throw s!"some tiles exceed the color {pcolors+1}"
+def puzzleConstraints (ts : TileSet size (Color.withBorder b c)) (onlyEdge : Bool := false)
+  : ExceptT String EncCNF (TileSetVariables size b c) := do
+  match h_ts : decide <| ts.tiles.length = size * size with
+  | false => throw s!"wrong number of tiles in tileset; expected {size * size} but got {ts.tiles.length}"
   | true =>
   match h_uniq : decide <| _ with
   | false => throw s!"some tiles not unique"
   | true =>
-    let tsv ← mkVars tiles psize pcolors.succ
+    let tsv ← mkVars ts.tiles size
         ((decide_eq_true_iff _).mp h_ts)
-        ((decide_eq_true_iff _).mp h_colors)
         ((decide_eq_true_iff _).mp h_uniq)
     pieceConstraints tsv
     diamondConstraints tsv
     essentialConstraints tsv onlyEdge
     return tsv
 
-def fixCorner (ts : TileSetVariables size colors) : EncCNF Unit := do
+def fixCorner (ts : TileSetVariables size b c) : EncCNF Unit := do
   -- Break rotational symmetry by assigning a corner to (0,0)
-  for (i, _) in ts.tiles.enum.find? (·.2.isCorner) do
-    addClause [ts.piece_vars ⟨i,sorry⟩ ⟨0,0⟩]
+  if h:size > 0 then
+    for (i, _) in ts.tiles.enum.find? (·.2.isCorner) do
+      if hi:_ then
+        addClause [ts.piece_vars ⟨i, hi⟩ ⟨⟨0,h⟩,⟨0,h⟩⟩]
+      else panic! "woah"
+
+def associatePolarities (ts : TileSetVariables size b c)
+        (signVars : List (Tile (Color.withBorder b c) × EncCNF.Var))
+        (h : signVars.length = size * size) : EncCNF Unit := do
+  -- For each piece & location, positive location -> positive piece, negative location -> negative piece
+  for p in List.fins _ do
+    for ⟨i,j⟩ in SquareIndex.all size do
+      if (i.val + j) % 2 = 0 then
+        -- positive location
+        addClause [.not <| ts.piece_vars (h ▸ p) ⟨i,j⟩, signVars[p].2]
+      else
+        -- negative location
+        addClause [.not <| ts.piece_vars (h ▸ p) ⟨i,j⟩, .not <| signVars[p].2]

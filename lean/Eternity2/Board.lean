@@ -2,13 +2,269 @@ import Eternity2.AuxDefs
 
 namespace Eternity2
 
-@[reducible]
-def Color := Option Nat
-def Color.toString : Color → String
-| none => "X"
-| some c => s!"{c}"
+structure SquareIndex (size : Nat) where
+  row : Fin size
+  col : Fin size
+deriving Repr
 
-def borderColor : Color := some 0
+inductive DiamondIndex (size : Nat) where
+/-- col refers to the right triangle's column -/
+| horz (row : Fin size) (col : Fin size.succ)
+/-- row refers to the bottom triangle's row -/
+| vert (row : Fin size.succ) (col : Fin size)
+deriving Repr
+
+namespace SquareIndex
+
+def toFin : SquareIndex size → Fin (size * size)
+| ⟨⟨i,hi⟩,⟨j,hj⟩⟩ => ⟨i * size + j, by
+  cases size; case zero => contradiction
+  case succ ps =>
+  apply Nat.lt_of_succ_le
+  rw [←Nat.add_succ]
+  conv => rhs; rw [Nat.succ_mul]
+  apply Nat.add_le_add
+  apply Nat.mul_le_mul_right
+  apply Nat.le_of_succ_le_succ hi
+  exact hj⟩
+
+private def maxIdx {psize : Nat} : Fin psize.succ := ⟨psize, Nat.lt_succ_self _⟩
+
+private def middleFins (psize : Nat) : List (Fin psize.succ) :=
+  forIn' (m := Id) [1:psize] [] (fun x h y =>
+    .yield (⟨x, by exact Nat.le_step h.2⟩ :: y))
+
+def up : (i j : Fin size) → DiamondIndex size
+| i, j => .vert ⟨i, Nat.le_step i.isLt⟩ j
+
+def left : (i j : Fin size) → DiamondIndex size
+| i, j => .horz i ⟨j, Nat.le_step j.isLt⟩
+
+def down : (i j : Fin size) → DiamondIndex size
+| i, j => .vert ⟨i+1, Nat.succ_le_succ i.isLt⟩ j
+
+def right : (i j : Fin size) → DiamondIndex size
+| i, j => .horz i ⟨j+1, Nat.succ_le_succ j.isLt⟩
+
+
+def corners (size : Nat) : List (SquareIndex size × (Fin 2 → DiamondIndex size)) :=
+  match size with
+  | 0 => [] | _ + 1 =>
+    [ ( ⟨0, 0⟩, fun
+          | 0 => right  0 0
+          | 1 => down   0 0)
+    , ( ⟨0, maxIdx⟩, fun
+          | 0 => down   0 maxIdx
+          | 1 => left   0 maxIdx)
+    , ( ⟨maxIdx, maxIdx⟩, fun
+          | 0 => left   maxIdx maxIdx
+          | 1 => up     maxIdx maxIdx)
+    , ( ⟨maxIdx, 0⟩, fun
+          | 0 => up     maxIdx 0
+          | 1 => right  maxIdx 0)
+    ]
+
+def sides (size : Nat) : List (SquareIndex size × (Fin 3 → DiamondIndex size)) :=
+  match size with
+  | 0 => [] | psize + 1 =>
+  middleFins psize |>.bind fun i =>
+    [ ( ⟨0, i⟩, fun
+        | 0 => right  0 i
+        | 1 => down   0 i
+        | 2 => left   0 i )
+    , ( ⟨i, 0⟩, fun
+        | 0 => up     i 0
+        | 1 => right  i 0
+        | 2 => down   i 0 )
+    , ( ⟨maxIdx, i⟩, fun
+        | 0 => left   maxIdx i
+        | 1 => up     maxIdx i
+        | 2 => right  maxIdx i )
+    , ( ⟨i, maxIdx⟩, fun
+        | 0 => down   i maxIdx
+        | 1 => left   i maxIdx
+        | 2 => up     i maxIdx )
+    ]
+
+def center (size : Nat) : List (SquareIndex size × (Fin 4 → DiamondIndex size)) :=
+  match size with
+  | 0 => [] | psize + 1 =>
+  middleFins psize |>.bind fun x =>
+    middleFins psize |>.map fun y =>
+      (⟨x,y⟩, fun
+        | 0 => up     x y
+        | 1 => right  x y
+        | 2 => down   x y
+        | 3 => left   x y)
+
+def all (size : Nat) : List (SquareIndex size) :=
+  List.fins size |>.bind fun i =>
+    List.fins size |>.map fun j =>
+      ⟨i,j⟩
+
+end SquareIndex
+
+
+namespace DiamondIndex
+
+/-
+ 0 1 2
+3 4 5 6
+ 7 8 9
+a b c d
+ e f g
+h i j k
+ l m n 
+-/
+
+def toFin : DiamondIndex size → Fin (2 * (size * size.succ))
+| vert ⟨i,hi⟩ ⟨j,hj⟩ => ⟨i * (size + size.succ) + j, by
+  simp [Nat.succ_mul, Nat.mul_add]
+  apply Nat.lt_of_lt_of_le
+  . apply Nat.lt_of_succ_le
+    rw [←Nat.add_succ]
+    apply Nat.add_le_add_left hj
+  rw [Nat.add_comm, ←Nat.add_assoc]
+  apply Nat.add_le_add
+  . rw [Nat.add_comm, ←Nat.succ_mul, Nat.mul_comm]
+    apply Nat.mul_le_mul_left _ hi
+  . apply Nat.mul_le_mul_right
+    apply Nat.le_of_succ_le_succ hi⟩
+| horz ⟨i,hi⟩ ⟨j,hj⟩ => ⟨i * (size + size.succ) + size + j, by
+  simp [Nat.mul_add, Nat.succ_mul, Nat.mul_succ, ←Nat.add_assoc]
+  apply Nat.lt_of_succ_le
+  rw [←Nat.succ_add]
+  apply Nat.add_le_add _ (Nat.le_of_succ_le_succ hj)
+  rw [←Nat.succ_add, Nat.add_assoc _ size, Nat.add_comm size, ←Nat.add_assoc]
+  apply Nat.add_le_add_right
+  rw [Nat.add_assoc, ←Nat.succ_add]
+  apply Nat.add_le_add
+  . apply Nat.mul_lt_mul_of_pos_right hi (Nat.lt_of_le_of_lt (Nat.zero_le _) hi)
+  . apply Nat.le_trans (Nat.add_le_add_left (Nat.le_of_lt hi) _)
+    rw [←Nat.succ_mul]
+    apply Nat.mul_le_mul_right _ hi
+  ⟩
+
+def ofFin : Fin (2 * (size * size.succ)) → DiamondIndex size
+| ⟨k,hk⟩ =>
+  let i := k / (size + size.succ)
+  let j := k - i * (size + size.succ)
+  if j < size then
+    .vert ⟨i, sorry⟩ ⟨j, sorry⟩
+  else
+    .horz ⟨i, sorry⟩ ⟨j - size, sorry⟩
+
+
+private def maxIdx {psize : Nat} : Fin psize.succ := ⟨psize, Nat.lt_succ_self _⟩
+private def majorFins (size : Nat) : List (Fin size.succ) :=
+  forIn' (m := Id) [0:size.succ] [] (fun x h y => .yield (⟨x,by exact h.2⟩ :: y))
+private def middleMajorFins (size : Nat) : List ((_ : size > 0) ×' Fin size.succ) :=
+  forIn' (m := Id) [1:size] [] (fun x h y => .yield (
+    ⟨Nat.lt_of_le_of_lt (Nat.zero_le x) (by exact h.2), x, by exact Nat.le_step h.2⟩ :: y))
+private def minorFins (size : Nat) : List (Fin size) :=
+  forIn' (m := Id) [0:size] [] (fun x h y => .yield (⟨x,by exact h.2⟩ :: y))
+private def middleMinorFins (size : Nat) : List (Fin size) :=
+  match size with
+  | 0 => []
+  | psize+1 =>
+  forIn' (m := Id) [1:psize] [] (fun x h y => .yield (⟨x,by exact Nat.le_step h.2⟩ :: y))
+
+def all (size : Nat) : List (DiamondIndex size) :=
+  majorFins size |>.bind fun i =>
+    minorFins size |>.bind fun j =>
+      [ .vert i j
+      , .horz j i ]
+
+/-- Half diamonds touching the puzzle's frame -/
+def frame (size : Nat) : List (DiamondIndex size) :=
+  minorFins size |>.bind fun i =>
+    [ .vert 0 i
+    , .vert maxIdx i
+    , .horz i 0
+    , .horz i maxIdx ]
+
+/-- Full diamonds within the side/corner pieces -/
+def border (size : Nat) : List (DiamondIndex size) :=
+  middleMajorFins size |>.bind fun ⟨h,i⟩ =>
+    match size, h with
+    | _+1, _ =>
+    [ .horz 0 i
+    , .horz maxIdx i
+    , .vert i 0
+    , .vert i maxIdx ]
+
+/-- Full diamonds not contained in side/corner pieces -/
+def center (size : Nat) : List (DiamondIndex size) :=
+  middleMajorFins size |>.bind fun ⟨_,i⟩ =>
+    middleMinorFins size |>.bind fun j =>
+      [ .vert i j
+      , .horz j i ]
+
+def isFrame : DiamondIndex size → Bool
+| .vert i _ => i = 0 || i = maxIdx
+| .horz _ j => j = 0 || j = maxIdx
+
+def isBorder (di : DiamondIndex size) : Bool :=
+  match size with
+  | 0 => false
+  | _+1 =>
+  match di with
+  | .horz i j => (i = 0 || i = maxIdx) && 0 < j && j < size
+  | .vert i j => (j = 0 || j = maxIdx) && 0 < i && i < size
+
+def isCenter : DiamondIndex size → Bool
+| .vert i j => 0 < i && i < size && 0 < j.val && j < size.pred
+| .horz i j => 0 < i.val && i < size.pred && 0 < j && j < size
+
+end DiamondIndex
+
+
+namespace Color
+
+def withBorder (borderColors centerColors : Nat) :=
+  Fin (borderColors + centerColors + 1)
+
+instance : DecidableEq (withBorder b c) := show DecidableEq (Fin _) from inferInstance
+
+def frameColor : withBorder b c := ⟨0, by simp [withBorder]; exact Nat.zero_lt_succ _⟩
+def borderColor (i : Fin b) : withBorder b c := ⟨i.val+1, by
+  apply Nat.succ_le_succ
+  simp
+  apply Nat.le_trans _ (Nat.le_add_right _ _)
+  exact i.isLt⟩
+def centerColor (i : Fin c) : withBorder b c := ⟨b+i.val+1, by
+  apply Nat.succ_le_succ
+  simp
+  rw [Nat.add_assoc]
+  apply Nat.add_le_add_left
+  exact i.isLt⟩
+
+def withBorder.isFrameColor : withBorder b c → Bool
+| ⟨x,_⟩ => x == 0
+def withBorder.isBorderColor : withBorder b c → Bool
+| ⟨x,_⟩ => 1 ≤ x && x < b+1
+def withBorder.isCenterColor : withBorder b c → Bool
+| ⟨x,_⟩ => b+1 ≤ x
+
+def borderColors : List (withBorder b c) :=
+  List.fins b |>.map borderColor
+
+def centerColors : List (withBorder b c) :=
+  List.fins c |>.map centerColor
+
+instance : ToString (withBorder b c) where
+  toString
+  | ⟨i,_⟩ =>
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"[i]?
+    |>.getD '*'
+    |> (String.mk [·])
+
+end Color
+
+
+structure Tile (color : Type u) where
+  (up right down left : color)
+deriving BEq
 
 inductive Sign
 | plus  : Sign
@@ -19,98 +275,65 @@ def Sign.toString : Sign → String
 | minus => "-"
 instance : ToString Sign := ⟨Sign.toString⟩
 
-structure Tile where
-  (up down left right : Color)
-  sign : Option Sign
-deriving DecidableEq, Repr, Inhabited
+structure SignedTile (color : Type u) extends Tile color where
+  sign : Sign
 
 namespace Tile
 
-def toString (tile : Tile) :=
-  let signage :=
-    match tile.sign with
-      | none => " "
-      | some s => Sign.toString s
-  s!"┌{tile.up.toString}┐\n{tile.left.toString}{signage}{tile.right.toString}\n└{tile.down.toString}┘"
+def toString [ToString c] (tile : Tile c) :=
+  s!"┌{tile.up}┐\n{tile.left} {tile.right}\n└{tile.down}┘"
 
-
-instance: ToString Tile where
+instance [ToString c] : ToString (Tile c) where
   toString := toString
 
-def rotl : Tile → Tile
-| ⟨up,down,left,right,sign⟩ => ⟨right,left,up,down,sign⟩
+def rotl : Tile c → Tile c
+| {up,right,down,left} =>
+  {up := right, right := down, down := left, left := up}
 
-def eq (tile1 tile2 : Tile) :=
+def rotln (n : Nat) : Tile c → Tile c := Function.iterate rotl n
+
+def eq [BEq c] (tile1 tile2 : Tile c) :=
   rotate 0 || rotate 1 || rotate 2 || rotate 3
-where rotate n := Function.iterate rotl n tile1 == tile2
+where rotate n := rotln n tile1 == tile2
 
-def hasColor (tile : Tile) (color : Color) : Bool :=
-     tile.up   == color || tile.down  == color
-  || tile.left == color || tile.right == color
+def colors : Tile c → List c
+| {up, right, down, left} => [up,right,down,left]
 
-def isCorner (tile : Tile) : Bool :=
-  ( tile.up == borderColor
-    && (tile.left == borderColor || tile.right == borderColor)) ||
-  ( tile.down == borderColor
-    && (tile.left == borderColor || tile.right == borderColor)
-  )
+def hasColor [BEq c] (tile : Tile c) (color : c) : Bool :=
+  tile.colors.contains color
 
-def isBorder (tile : Tile) : Bool :=
-  !(isCorner tile) &&
-  ( tile.up == borderColor
-  || tile.down == borderColor
-  || tile.right == borderColor
-  || tile.left == borderColor
-  )
+def isCorner (tile : Tile (Color.withBorder b c)) : Bool :=
+  rotate 0 || rotate 1 || rotate 2 || rotate 3
+where rotate n :=
+  let t := rotln n tile
+  t.up.isFrameColor && t.right.isFrameColor &&
+  t.down.isBorderColor && t.left.isBorderColor
 
-def isCenter (tile : Tile) : Bool :=
-  !(isBorder tile) && !(isCorner tile)
+def isSide (tile : Tile (Color.withBorder b c)) : Bool :=
+  rotate 0 || rotate 1 || rotate 2 || rotate 3
+where rotate n :=
+  let t := rotln n tile
+  t.up.isFrameColor && t.right.isBorderColor &&
+  t.down.isCenterColor && t.left.isBorderColor
 
-def colors : Tile → List Color
-| ⟨up, down, left, right,_⟩ =>
-  [up,down,left,right]
+def isCenter (t : Tile (Color.withBorder b c)) : Bool :=
+  t.up.isCenterColor && t.right.isCenterColor &&
+  t.down.isCenterColor && t.left.isCenterColor
 
-def getBorderColors (tile : Tile) : List Color :=
-  if tile.isCenter then []
-  else if tile.isBorder then
-    if tile.up == borderColor || tile.down == borderColor
-    then [tile.left, tile.right]
-    else [tile.up, tile.down]
-  else if tile.up == borderColor then
-    [tile.down, if tile.left == borderColor then tile.right else tile.left]
-  else [tile.up, if tile.left == borderColor then tile.right else tile.left]
-
-def getCenterColors (tile : Tile) : List Color :=
-  if tile.isCenter then [tile.up, tile.down, tile.left, tile.right]
-  else if tile.isCorner then []
-  else if tile.up   == borderColor then [tile.down]
-  else if tile.down == borderColor then [tile.up]
-  else if tile.left == borderColor then [tile.right]
-  else [tile.left]
+def validate (t : Tile (Color.withBorder b c)) : Bool :=
+  t.isCorner || t.isSide || t.isCenter
 
 end Tile
 
-
-@[reducible]
-def Diamond := {c : Color // c ≠ borderColor}
-deriving Repr
-
-instance : Inhabited Diamond where
-  default := ⟨some 1, by decide⟩
-
-structure TileBoard (size : Nat) where
-  board : Array (Array Tile)
+structure TileBoard (size : Nat) (color : Type u) where
+  board : Array (Array (Tile color))
   board_size :
-    board.size = size ∧ ∀ i, (h : i < board.size) → board[i].size = size
-  isFinalized: Bool
-  finalize: isFinalized →
-    ∀ i, (h : i < board.size) → ∀ j, (h' : j < board[i].size) →
-      not (board[i][j].hasColor none)
+    board.size = size ∧ ∀ i, (h : i < board.size) → (board[i]'h).size = size
 
 namespace TileBoard
 
-instance : ToString (TileBoard size) where
-  toString (tile : TileBoard size) :=
+instance [ToString c] : ToString (TileBoard size c) where
+  toString tile :=
     tile.board.toList.map (·.toList.map (toString))
     |> List.map (fun row =>
         row
@@ -120,112 +343,37 @@ instance : ToString (TileBoard size) where
       )
     |> String.intercalate "\n"
 
-def tiles (tb : TileBoard size) : List Tile :=
+def tiles (tb : TileBoard size c) : List (Tile c) :=
   tb.board.foldr (·.toList ++ ·) []
 
 end TileBoard
 
-structure DiamondBoard (size : Nat) where
-  board: Array (Array Diamond)
-  boardsize: board.size = 2 * size - 1
-  rowsize: ∀ i, (h : i < board.size) →
-    if i % 2 = 0
-    then board[i].size = size - 1
-    else board[i].size = size
-  isFinalized: Bool
-  finalize: isFinalized →
-    ∀ i, (h : i < board.size) → ∀ j, (h' : j < board[i].size) →
-      board[i][j].val != none
+structure DiamondBoard (size : Nat) (color : Type u) where
+  board: Array color
+  boardsize: board.size = 2 * (size * size.succ)
 
 namespace DiamondBoard
 
-def up_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
-  if row.val = 0 then borderColor else
-    dboard.board[2 * row.val - 1]![col]!
-def down_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
-  if row.val = size - 1 then borderColor else
-    dboard.board[2 * row.val + 1]![col]!
-def left_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
-  if col.val = 0 then borderColor else
-    dboard.board[2 * row.val]![col.val - 1]!
-def right_color (dboard : DiamondBoard size) (row : Fin size) (col : Fin size) :=
-  if col.val = size - 1 then borderColor else
-    dboard.board[2 * row.val]![col]!
+def get (di : DiamondIndex size) (db : DiamondBoard size c) :=
+  db.board.get (db.boardsize ▸ di.toFin)
 
-def diamond_to_tile (dboard : DiamondBoard size) (row col : Fin size) :=
-  Tile.mk
-    (up_color dboard row col)
-    (down_color dboard row col)
-    (left_color dboard row col)
-    (right_color dboard row col)
+def set (di : DiamondIndex size) (db : DiamondBoard size c) (color : c) : DiamondBoard size c :=
+  ⟨ db.board.set (db.boardsize ▸ di.toFin) color
+  , by simp [db.boardsize]⟩
 
-def tileBoard (dboard : DiamondBoard size) (checker : Bool) : TileBoard size := Id.run do
-  let mut a := Array.mkEmpty size
-  for i in [0:size] do
-    a := a.push (Array.mkEmpty size)
-    for j in [0:size] do
-      a := a.set! i
-        <| (a.get! i).push
-          <| diamond_to_tile dboard ⟨i, sorry⟩ ⟨j, sorry⟩
-                (if checker then
-                  some (if (i+j) % 2 = 0 then .plus else .minus)
-                else none)
-  return TileBoard.mk a sorry dboard.isFinalized sorry
+def diamond_to_tile (dboard : DiamondBoard size c) (row col : Fin size) : Tile c :=
+  {
+    up    := dboard.get <| SquareIndex.up row col
+    right := dboard.get <| SquareIndex.right row col
+    down  := dboard.get <| SquareIndex.down row col
+    left  := dboard.get <| SquareIndex.left row col
+  }
 
-def isLegal (dboard : DiamondBoard size) : Bool :=
-  tileBoard dboard false
-  |>.tiles
-  |> List.filter (fun t => t.hasColor none |> not)
-  |> (fun tiles =>
-        List.foldr (fun t (acc, legal) =>
-          if not (legal) || (List.find? (fun t' => Tile.eq t t') acc |>.isSome)
-          then (acc, false)
-          else (t::acc, legal)
-        ) ([], true) tiles
-     )
-  |> (fun (_, legal) => legal)
-
-def hasUnColored (board : Array (Array Diamond)) : Bool :=
-  board.any (fun row => row.any (fun c => c.val.isNone))
-
-def blankBoard (size : Nat) : IO (Array (Array Diamond)) := do
-  let mut a := Array.mkEmpty (2 * size - 1)
-  for i in [0:2*size - 1] do
-    let len := if i % 2 = 0 then (size - 1) else size
-    a := a.push (Array.mkEmpty len)
-    for j in [0:len] do
-      a := a.set! i <| (a.get! i).push (⟨none, sorry⟩ : Diamond)
-  return a
-
-
-/-- `size`x`size` board with `colors` colors assigned randomly. -/
-def generate (size : Nat) (coreColors : Nat) (edgeColors : Nat) : IO (DiamondBoard size) := do
-  let mut a ← blankBoard size
-
-  while hasUnColored a do
-    let i ← IO.rand 0 (a.size - 1)
-    let j ← IO.rand 0 (a[i]!.size - 1)
-
-    if a[i]![j]!.val.isSome
-    then continue
-
-    let mut attempts := 0
-    let mut pickColor := true
-    while pickColor do
-      let c ← IO.rand (borderColor.get! + 1) <|
-        if i == 0 || i == (a.size - 1) || j == 0 || j == (a[i]!.size - 1)
-        then edgeColors
-        else coreColors
-      a := a.set! i <| (a.get! i).set! j (⟨some c, sorry⟩ : Diamond)
-      let dboard : DiamondBoard size := DiamondBoard.mk a sorry sorry false sorry
-      pickColor := not (isLegal dboard)
-      if attempts > 1000
-      then do
-        a ← blankBoard size
-        break
-      attempts := attempts + 1
-
-
-  return DiamondBoard.mk a sorry sorry true sorry
+def tileBoard (dboard : DiamondBoard size c) : TileBoard size c :=
+  ⟨Array.init size (fun row =>
+    Array.init size (fun col =>
+      dboard.diamond_to_tile row col
+    ))
+  , by simp⟩
 
 end DiamondBoard

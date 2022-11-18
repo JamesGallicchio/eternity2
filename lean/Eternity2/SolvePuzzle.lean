@@ -6,61 +6,28 @@ namespace Eternity2.SolvePuzzle
 
 open Constraints EncCNF
 
-def decodeDiamondBoard (tsv : Constraints.TileSetVariables psize colors)
-  (assn : Std.HashMap Var Bool) : DiamondBoard psize.succ :=
-  {
-    board := Array.init (2*psize.succ - 1) (fun ⟨idx,hidx⟩ =>
-      let r := idx / 2
-      if idx % 2 = 0 then
-        Array.init psize (fun c =>
-          dbgTrace s!"{r} {c}" fun () =>
-          ⟨ List.fins colors
-            |>.find? (fun col =>
-              assn.findD (tsv.diamond_vars (.horz ⟨r,sorry⟩ c) col) false)
-            |>.map (fun c => c.val)
-          , sorry⟩)
-      else
-        Array.init psize.succ (fun c =>
-          ⟨ List.fins colors
-            |>.find? (fun col =>
-              assn.findD (tsv.diamond_vars (.vert ⟨r,sorry⟩ c) col) false)
-            |>.map (fun c => c.val)
-          , sorry⟩))
-    boardsize := by simp
-    rowsize := by
-      sorry
-    isFinalized := true
-    finalize := sorry
-  }
-
-
-def decodeTileBoard (tsv : Constraints.TileSetVariables psize colors)
+def decodeDiamondBoard (tsv : Constraints.TileSetVariables size b c)
               (s : Std.HashMap EncCNF.Var Bool) :=
-  let tb : TileBoard psize.succ := {
+  let tb : DiamondBoard size (Option (Color.withBorder b c)) := {
     board :=
-      Array.init _ (fun i =>
-        Array.init _ (fun j =>
+      Array.init _ (fun k =>
           List.fins _
-            |>.find? (fun p => s.find? (tsv.piece_vars p ⟨i,j⟩) |>.get!)
-            |>.map (tsv.tiles[·]!)
-            |>.getD ⟨none,none,none,none,none⟩
-      ))
-    board_size := sorry
-    isFinalized := true
-    finalize := sorry
+            |>.find? (fun color => s.find? (tsv.diamond_vars (.ofFin k) color) |>.get!)
+      )
+    boardsize := by simp
   }
   tb
 
-def solve (enc : EncCNF.State) (tsv : TileSetVariables psize colors)
-  : Option (DiamondBoard psize.succ) :=
+def solve (enc : EncCNF.State) (tsv : TileSetVariables size b c)
+  : Option (DiamondBoard size (Option (Color.withBorder b c))) :=
   let pVars := tsv.pieceVarList
   let dVars := tsv.diamondVarList
   SATSolve.solve enc (pVars ++ dVars)
   |>.map fun (_, assn) =>
   decodeDiamondBoard tsv assn
 
-def solveAll (enc : EncCNF.State) (tsv : TileSetVariables psize colors)
-  : IO (List (DiamondBoard psize.succ)) := do
+def solveAll (enc : EncCNF.State) (tsv : TileSetVariables size b c)
+  : IO (List (DiamondBoard size (Option (Color.withBorder b c)))) := do
   let pVars := tsv.pieceVarList
   let dVars := tsv.diamondVarList
   let sols : IO.Ref (List _) ← IO.mkRef []

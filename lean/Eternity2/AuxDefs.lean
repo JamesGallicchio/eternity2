@@ -74,30 +74,24 @@ private theorem thing (hi : i < n) (h : n = n')
   : h ▸ (⟨i,hi⟩ : Fin n) = ⟨i, h ▸ hi⟩
   := by cases h; simp
 
---set_option pp.all true in
 @[simp]
-theorem Array.get_init : (Array.init n f)[i] = f (@size_init n _ f ▸ i) := by
-  induction n with
-  | zero => simp at i; exact i.elim0
+theorem Array.get_init {i : Nat} {h} : (Array.init n f)[i]'h = f ⟨i, @size_init n _ f ▸ h⟩ := by
+  induction n generalizing i with
+  | zero => simp at h; exact False.elim <| Nat.not_lt_zero _ h
   | succ n ih =>
     simp [init_succ, get_push]
     split
     next h =>
-      have := @ih (fun i => f ⟨i,Nat.lt_trans i.isLt (by exact Nat.le_refl _)⟩) ⟨i,by simp; assumption⟩
-      cases i; case mk i hi =>
+      have := @ih (fun i => f ⟨i,Nat.lt_trans i.isLt (by exact Nat.le_refl _)⟩) i (by simp; assumption)
       simp at this ⊢
       rw [this]
-      congr
-      simp [thing]
-    next h =>
-      cases i; case mk i hi =>
-      simp at h
+    next h' =>
+      simp at h'
       have : i = n := Nat.le_antisymm
-        (Nat.le_of_succ_le_succ (by rw [size_init] at hi; exact hi))
-        h
+        (Nat.le_of_succ_le_succ (by rw [size_init] at h; exact h))
+        h'
       cases this
       congr
-      simp [thing]
 
 def Nat.sqrt (n : Nat) : Nat :=
   let guess := n / 2
@@ -115,7 +109,7 @@ termination_by iter guess => guess
 def List.distinct [DecidableEq α] (L : List α) : List α :=
   L.foldl (·.insert ·) []
 
-def List.isDistinct [DecidableEq α] : List α → Bool
+def List.isDistinct [BEq α] : List α → Bool
 | [] => true
 | x::xs => !xs.contains x && xs.isDistinct
 
@@ -154,3 +148,13 @@ def IO.timeMs (prog : IO α) : IO (Nat × α) := do
   let end_ ← IO.monoMsNow
 
   return (end_ - start, res)
+
+instance : GetElem String Nat Char (fun s i => i < s.length) where
+  getElem | xs, i, _ => xs.get (String.Pos.mk i)
+
+def randFin (n) (h : n > 0) : IO (Fin n) := do
+  let i ← IO.rand 0 n.pred
+  if h : i < n then
+    return ⟨i,h⟩
+  else
+    panic! s!"failed to get random number {i} < {n}"
