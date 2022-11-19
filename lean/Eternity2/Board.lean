@@ -323,6 +323,10 @@ def isCenter (t : Tile (Color.withBorder b c)) : Bool :=
 def validate (t : Tile (Color.withBorder b c)) : Bool :=
   t.isCorner || t.isSide || t.isCenter
 
+def map (f : c → c') : Tile c → Tile c'
+| {up, right, down, left} =>
+  {up := f up, right := f right, down := f down, left := f left}
+
 end Tile
 
 structure TileBoard (size : Nat) (color : Type u) where
@@ -345,6 +349,9 @@ instance [ToString c] : ToString (TileBoard size c) where
 
 def tiles (tb : TileBoard size c) : List (Tile c) :=
   tb.board.foldr (·.toList ++ ·) []
+
+def mapColors (f : c → c') : TileBoard size c → TileBoard size c'
+| ⟨b, h⟩ => ⟨b.map (·.map (Tile.map f)), by simp [h]⟩
 
 end TileBoard
 

@@ -201,6 +201,24 @@ def mainCmd := `[Cli|
     genTileSetCmd
 ]
 
-def main (args : List String) : IO UInt32 := do
-  plotCorr_sign_puzzle_withTimes 5
-  return 0
+def main (args : List String) : IO Unit := do
+  let tb := (← GenBoard.generate 5 6 3).tileBoard
+  IO.println tb
+  IO.println ""
+  let ts := tb.tileSet
+  let (tsv,enc) := EncCNF.new do
+    match ← Constraints.puzzleConstraints ts with
+    | .error s => return panic! s!"it got sad :(\n{s}"
+    | .ok tsv =>
+      let () ← Constraints.fixCorner tsv
+      let vList ← Constraints.colorCardConstraints tsv.tiles
+      let () ← Constraints.associatePolarities tsv vList sorry
+      return pure tsv
+  let tsv ← tsv
+  match
+    SolvePuzzle.solve enc tsv
+  with
+  | none => IO.println "failed"
+  | some a =>
+  IO.println <|
+    a.tileBoard.mapColors (fun | none => " " | some a => toString a)
