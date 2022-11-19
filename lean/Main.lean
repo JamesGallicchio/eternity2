@@ -29,9 +29,11 @@ def plotData (name : String) (colLabels : List String) (size : Nat)
   --    <| String.intercalate ","
   --    <| ["title", "size", "colors"] ++ colLabels
   --)
-  for i in [0:5] do
-    let colors := size + i
-    parallel for j in [0:5] do
+  let maxColors := 5
+  let maxRuns := 5
+  for i in [0:maxColors] do
+    let colors := size + maxColors - i
+    parallel for j in [0:maxRuns] do
       let tiles ← genTileSet size colors (size.sqrt + 1)
       let boardTitle := s!"{size}_{colors}_{j}"
 
