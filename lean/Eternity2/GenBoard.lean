@@ -63,19 +63,19 @@ where
         if isLegal a' then
           a := a'
           break
-      
+
       if colors.isEmpty then
         -- failed to find a color :(
         return ← attempt attempts
       else
         -- got the color :)
         continue
-    
+
     /- Now all the diamonds should be some, so we map! -/
     let board ← a.board.mapM (fun
       | none => panic! "none found in generated board?"
       | some c => pure c)
-    
+
     if h : board.size = _ then
       return ⟨board, h⟩
     else

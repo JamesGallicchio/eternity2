@@ -252,6 +252,9 @@ def borderColors : List (withBorder b c) :=
 def centerColors : List (withBorder b c) :=
   List.fins c |>.map centerColor
 
+def allColors : List (withBorder b c) :=
+  List.fins (b + c + 1)
+
 instance : ToString (withBorder b c) where
   toString
   | ⟨i,_⟩ =>

@@ -24,15 +24,15 @@ def plotData (name : String) (colLabels : List String) (size : Nat)
 
   IO.FS.createDirAll boardsDir
 
-  --IO.FS.withFile outputFile .write (fun handle =>
-  --  handle.putStrLn
-  --    <| String.intercalate ","
-  --    <| ["title", "size", "colors"] ++ colLabels
-  --)
-  let maxColors := 5
-  let maxRuns := 5
-  for i in [0:maxColors] do
-    let colors := size + maxColors - i
+  IO.FS.withFile outputFile .write (fun handle =>
+   handle.putStrLn
+     <| String.intercalate ","
+     <| ["title", "size", "colors"] ++ colLabels
+  )
+  let maxColors := 7
+  let maxRuns := 10
+  parallel for i in [0:maxColors] do
+    let colors := size + maxColors - i - 2
     parallel for j in [0:maxRuns] do
       let tiles ← genTileSet size colors (size.sqrt + 1)
       let boardTitle := s!"{size}_{colors}_{j}"
@@ -53,21 +53,21 @@ def plotSolCounts (name : String) (size : Nat)
   plotData name ["sols"] size fun tiles => do
     let (blocking_vars, state) := EncCNF.new (encoding tiles)
     let count ← IO.mkRef 0
-    
+
     SATSolve.allSols state (reportProgress := true) blocking_vars
       (perItem := fun _ => count.modify (·+1))
-    
+
     return [toString <| ←count.get]
 
 
 def plotSignSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "sign" size fun ts => do
-    let tile_vars ← Constraints.colorCardConstraints ts.tiles 
+    let tile_vars ← Constraints.colorCardConstraints ts.tiles
     return tile_vars.map (·.2)
 
 def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "edgesign" size fun ts => do
-    let tile_vars ← Constraints.colorCardConstraints ts.tiles 
+    let tile_vars ← Constraints.colorCardConstraints ts.tiles
     return tile_vars.filterMap (fun (t, v) =>
       if !t.isCenter then some v else none)
 
@@ -75,14 +75,16 @@ def plotPuzzleSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "puzzle" size fun ts => do
     match ← Constraints.puzzleConstraints ts with
     | .error s => panic! s!"it got sad :(\n{s}"
-    | .ok tsv => 
+    | .ok tsv =>
+      Constraints.fixCorner tsv
       return tsv.diamondVarList
 
 def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "edgepuzzle" size fun ts => do
     match ← Constraints.puzzleConstraints ts (onlyEdge := true) with
     | .error s => panic! s!"it got sad :(\n{s}"
-    | .ok tsv => 
+    | .ok tsv =>
+      Constraints.fixCorner tsv
       return tsv.borderDiamondVarList
 
 def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
@@ -106,7 +108,7 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
 --        let (blocking_vars, state) := EncCNF.new do
 --          match ← Constraints.puzzleConstraints ts with
 --          | .error s => panic! s!"it got sad :(\n{s}"
---          | .ok tsv => 
+--          | .ok tsv =>
 --            return tsv.diamondVarList
 --
 --        let count ← IO.mkRef 0
@@ -204,23 +206,42 @@ def mainCmd := `[Cli|
 ]
 
 def main (args : List String) : IO Unit := do
-  let tb := (← GenBoard.generate 5 6 3).tileBoard
-  IO.println tb
-  IO.println ""
-  let ts := tb.tileSet
-  let (tsv,enc) := EncCNF.new do
-    match ← Constraints.puzzleConstraints ts with
-    | .error s => return panic! s!"it got sad :(\n{s}"
-    | .ok tsv =>
-      let () ← Constraints.fixCorner tsv
-      let vList ← Constraints.colorCardConstraints tsv.tiles
-      let () ← Constraints.associatePolarities tsv vList sorry
-      return pure tsv
-  let tsv ← tsv
-  match
-    SolvePuzzle.solve enc tsv
-  with
-  | none => IO.println "failed"
-  | some a =>
-  IO.println <|
-    a.tileBoard.mapColors (fun | none => " " | some a => toString a)
+  plotPuzzleSolCounts (args[0]!.toNat!)
+  -- let tb := (← GenBoard.generate 6 10 3).tileBoard
+  -- IO.println tb
+  -- IO.println ""
+  -- let ts := tb.tileSet
+  -- let (tsv,enc) := EncCNF.new do
+    -- match ← Constraints.puzzleConstraints ts with
+    -- | .error s => return panic! s!"it got sad :(\n{s}"
+    -- | .ok tsv =>
+      -- let () ← Constraints.fixCorner tsv
+      -- let vList ← Constraints.colorCardConstraints tsv.tiles
+      -- let () ← Constraints.associatePolarities tsv vList sorry
+      -- return pure tsv
+  -- IO.FS.withFile "test-cnf.txt" .write (fun h => do
+    -- enc.prettyPrintAux h.putStrLn
+    -- h.putStrLn ""
+  -- )
+  -- let tsv ← tsv
+  -- IO.FS.withFile "test.txt" .write (fun h =>
+    -- h.putStrLn ""
+  -- )
+  -- IO.FS.withFile "test-p.txt" .write (fun h =>
+    -- h.putStrLn ""
+  -- )
+  -- match
+    -- ← SolvePuzzle.solveAll enc tsv
+  -- with
+  -- | [] => IO.println "failed"
+  -- | sols =>
+    -- IO.println s!"{sols.length}"
+    -- IO.FS.withFile "test.txt" .write (fun h =>
+    -- for s in sols do
+    --   h.putStrLn ""
+    --   h.putStrLn
+    --     <| toString
+    --     <| s.tileBoard.mapColors (fun | none => " " | some a => toString a)
+    -- )
+  -- IO.println <|
+    -- a.tileBoard.mapColors (fun | none => " " | some a => toString a)

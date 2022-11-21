@@ -66,7 +66,7 @@ def mkVars (tiles : List (Tile (Color.withBorder b c))) (size : Nat)
   return ⟨tiles, h_ts, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
 
 def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
-  
+
   /- Each square has a tile -/
   for (q,_) in SquareIndex.corners size do
     EncCNF.addClause (tsv.cornerTiles |>.map (tsv.piece_vars ·.2 q))
@@ -112,6 +112,9 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   /- Frame (always frameColor) -/
   for d in DiamondIndex.frame size do
     EncCNF.addClause [tsv.diamond_vars d (Color.frameColor)]
+    for c in Color.allColors do
+      if not (Color.withBorder.isFrameColor c) then
+        EncCNF.addClause [.not (tsv.diamond_vars d c)]
 
   /- Border -/
   for d in DiamondIndex.border size do
@@ -122,14 +125,22 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
       for c' in Color.borderColors do
         if c.val < c'.val then
           EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
-  
+
+    for c in Color.allColors do
+      if not (Color.withBorder.isBorderColor c) then
+        EncCNF.addClause [.not (tsv.diamond_vars d c)]
+
   for d in DiamondIndex.center size do
     EncCNF.addClause (Color.centerColors.map (tsv.diamond_vars d ·))
-  
+
     for c in Color.centerColors do
       for c' in Color.centerColors do
         if c.val < c'.val then
           EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
+
+    for c in Color.allColors do
+      if not (Color.withBorder.isCenterColor c) then
+        EncCNF.addClause [.not (tsv.diamond_vars d c)]
 
 
 /- Piece classification for essential constraints -/
@@ -293,6 +304,17 @@ def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : E
               .not (tsv.diamond_vars (ds rot) r), tsv.diamond_vars (ds (rot+2)) l]
             EncCNF.addClause [.not (tsv.piece_vars i q),
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+2)) r]
+          /- one of the diamonds must be one of the colours -/
+          EncCNF.addClause
+            [ .not (tsv.piece_vars i q)
+            , tsv.diamond_vars (ds 0) r, tsv.diamond_vars (ds 1) r
+            , tsv.diamond_vars (ds 2) r, tsv.diamond_vars (ds 3) r
+            ]
+          EncCNF.addClause
+            [ .not (tsv.piece_vars i q)
+            , tsv.diamond_vars (ds 0) l, tsv.diamond_vars (ds 1) l
+            , tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l
+            ]
     | .allDiff u r d l =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
@@ -306,6 +328,27 @@ def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : E
               .not (tsv.diamond_vars (ds rot) d), tsv.diamond_vars (ds (rot+1)) l]
             EncCNF.addClause [.not (tsv.piece_vars i q),
               .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+1)) u]
+          /- one of the diamonds must be one of the colours -/
+          EncCNF.addClause
+            [ .not (tsv.piece_vars i q)
+            , tsv.diamond_vars (ds 0) u, tsv.diamond_vars (ds 1) u
+            , tsv.diamond_vars (ds 2) u, tsv.diamond_vars (ds 3) u
+            ]
+          EncCNF.addClause
+            [ .not (tsv.piece_vars i q)
+            , tsv.diamond_vars (ds 0) r, tsv.diamond_vars (ds 1) r
+            , tsv.diamond_vars (ds 2) r, tsv.diamond_vars (ds 3) r
+            ]
+          EncCNF.addClause
+            [ .not (tsv.piece_vars i q)
+            , tsv.diamond_vars (ds 0) d, tsv.diamond_vars (ds 1) d
+            , tsv.diamond_vars (ds 2) d, tsv.diamond_vars (ds 3) d
+            ]
+          EncCNF.addClause
+            [ .not (tsv.piece_vars i q)
+            , tsv.diamond_vars (ds 0) l, tsv.diamond_vars (ds 1) l
+            , tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l
+            ]
 
 def puzzleConstraints (ts : TileSet size (Color.withBorder b c)) (onlyEdge : Bool := false)
   : ExceptT String EncCNF (TileSetVariables size b c) := do
