@@ -22,12 +22,12 @@ def toFileFormat (ts : TileSet size (Color.withBorder b c)) : String :=
     ) ++ "\n"
 
 
-def toFile (filename : String) (ts : TileSet size (Color.withBorder b c)) : IO Unit := do
-  IO.FS.withFile filename .write (fun handle =>
+def toFile (file : System.FilePath) (ts : TileSet size (Color.withBorder b c)) : IO Unit := do
+  IO.FS.withFile file .write (fun handle =>
     handle.putStr (toFileFormat ts))
 
-def fromFile (filename : String) : IO (Σ size b c, TileSet size (Color.withBorder b c)) := do
-  let contents ← IO.FS.withFile filename .read (fun handle =>
+def fromFile (file : System.FilePath) : IO (Σ size b c, TileSet size (Color.withBorder b c)) := do
+  let contents ← IO.FS.withFile file .read (fun handle =>
     handle.readToEnd
   )
   match contents.splitOn "\n"

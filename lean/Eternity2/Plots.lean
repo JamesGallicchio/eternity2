@@ -196,3 +196,61 @@ def findEternityEdgeSols : IO Unit := do
     )
 
 
+/- Outputs all solutions to a given tileset as solution files in `outputFolder`. -/
+def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
+      (outputFolder : FilePath)
+      (parallelize : Bool := false)
+      : Log IO Unit
+  := do
+  match EncCNF.new (Constraints.puzzleConstraints ts) with
+  | (.error s, _) =>
+    Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
+  | (.ok tsv, enc) =>
+  let counter ← IO.mkRef 0
+  if parallelize then
+    fun handle => do
+    parallel for i in List.fins 6 do
+      Log.run handle do
+      let ((), enc) := EncCNF.run enc do
+        Constraints.fixCorners tsv i
+      solveAndOutput tsv enc counter
+  else
+    let ((), enc) := EncCNF.run enc do
+      Constraints.fixCorner tsv
+    solveAndOutput tsv enc counter
+where
+  solveAndOutput tsv enc counter := do
+    SATSolve.allSols enc
+      (tsv.pieceVarList ++ tsv.diamondVarList)
+      tsv.diamondVarList
+      (reportProgress := false)
+      (fun assn => do
+    let num ← counter.modifyGet (fun i => (i,i+1))
+    Log.info s!"Board {name}: Found solution #{num}"
+    match SolvePuzzle.decodeTileBoard tsv assn with
+    | .error s =>
+      Log.error s!"Failed to decode board {name} solution #{num}: {s}"
+    | .ok board =>
+    let file := outputFolder / s!"{name}_sol{num}.sol"
+    SolvePuzzle.writeSolution file tsv board
+    Log.info s!"Board {name}: Wrote solution #{num} to {file}"
+  )
+
+def genAndSolveBoards (outputDir : FilePath) : Log IO Unit := do
+  Log.info s!"Output directory: {outputDir}"
+  fun handle => do
+  parallel for size in [7:8] do
+    parallel for colors in [size+3,size+2,size+1] do
+      parallel for rep in [0:10] do
+        Log.run handle do
+        let name := s!"tiles_{size}_{colors}__{rep}"
+        Log.info s!"Generating tile set {name}"
+        let ts ← genTileSet size colors (Nat.sqrt size + 1)
+        let file := outputDir / s!"{name}.tiles"
+        Log.info s!"Generated tile set {name}"
+        ts.toFile file
+        let solDir := outputDir / name
+        IO.FS.createDir solDir
+        Log.info s!"Finding solutions to {name}"
+        outputAllSols name ts solDir
+        Log.info s!"All solutions to {name} found"
