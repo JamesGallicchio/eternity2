@@ -42,7 +42,7 @@ def runGenAndSolveBoardsCmd (p : Parsed) : IO UInt32 := do
     IO.println s!"ERROR: Directory {output} already exists. Please delete the directory or choose a different name for the output directory."
     return 1
   
-  IO.FS.createDir output
+  IO.FS.createDirAll output
   
   if ←logfile.pathExists then
     IO.println s!"ERROR: File {logfile} already exists. Please delete the file or choose a different name for the log file."
