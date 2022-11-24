@@ -1,4 +1,4 @@
-import Eternity2.Board
+import Eternity2.Puzzle.Board
 
 namespace Eternity2.GenBoard
 

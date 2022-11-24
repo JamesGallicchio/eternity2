@@ -1,5 +1,5 @@
-import Eternity2.EdgeConstraints
-import Eternity2.Board
+import Eternity2.Puzzle.EdgeConstraints
+import Eternity2.Puzzle.Board
 import Eternity2.SATSolve
 
 namespace Eternity2.SolvePuzzle

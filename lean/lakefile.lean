@@ -11,8 +11,8 @@ package eternity2 {
   moreLinkArgs := #[
     "-L" ++ (cadicalDir / "build").toString,
     "-I" ++ (cadicalDir / "src").toString,
-    "-lcadical",
-    libstdcpp.toString
+    "-lcadical"
+    -- libstdcpp.toString
   ]
 }
 

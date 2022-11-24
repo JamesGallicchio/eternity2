@@ -1,4 +1,4 @@
-import Eternity2.Board
+import Eternity2.Puzzle.Board
 import Eternity2.SATSolve.CardinalityHelpers
 
 namespace Eternity2.Constraints

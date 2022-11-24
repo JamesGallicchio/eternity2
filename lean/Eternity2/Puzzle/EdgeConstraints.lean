@@ -1,4 +1,4 @@
-import Eternity2.TileSet
+import Eternity2.Puzzle.TileSet
 import Eternity2.SATSolve.CardinalityHelpers
 
 namespace Eternity2.Constraints
