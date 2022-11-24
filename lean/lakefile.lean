@@ -3,17 +3,18 @@ open Lake DSL
 
 /-- The directory where cadical source will be cloned/maintained -/
 def cadicalDir : FilePath := "./cadical"
-/-- The path to `libstdc++.so.6` -/
-def libstdcpp : FilePath := "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+/-- The path to `libstdc++.so.6` (if necessary) -/
+def libstdcpp : Option FilePath :=
+  if System.Platform.isOSX then none
+  else some "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
 
 package eternity2 {
   moreLeancArgs := #[ "--verbose" ]
   moreLinkArgs := #[
     "-L" ++ (cadicalDir / "build").toString,
     "-I" ++ (cadicalDir / "src").toString,
-    "-lcadical"
-    -- libstdcpp.toString
-  ]
+    "-lcadical"]
+    ++ match libstdcpp with | none => #[] | some x => #[x.toString]
 }
 
 lean_lib Eternity2
