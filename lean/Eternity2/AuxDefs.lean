@@ -92,10 +92,6 @@ theorem Array.size_init : (Array.init n f).size = n := by
   . next ih =>
     simp [init_succ]; exact ih
 
-private theorem thing (hi : i < n) (h : n = n')
-  : h ▸ (⟨i,hi⟩ : Fin n) = ⟨i, h ▸ hi⟩
-  := by cases h; simp
-
 @[simp]
 theorem Array.get_init {i : Nat} {h} : (Array.init n f)[i]'h = f ⟨i, @size_init n _ f ▸ h⟩ := by
   induction n generalizing i with
@@ -180,6 +176,18 @@ def randFin (n) (h : n > 0) : IO (Fin n) := do
     return ⟨i,h⟩
   else
     panic! s!"failed to get random number {i} < {n}"
+
+/- Generate a random permutation of the list.
+Implementation is quadratic in length of L. -/
+def IO.randPerm (L : List α) : IO (List α) :=
+  randPermTR L [] 0
+where randPermTR (L acc n) := do
+  match L with
+  | [] => return acc
+  | x::xs =>
+    let idx ← IO.rand 0 n
+    let acc' := acc.insertNth idx x
+    randPermTR xs acc' (n+1)
 
  
 def Log (m) [Monad m] [MonadLiftT IO m] (α) := IO.FS.Handle → m α

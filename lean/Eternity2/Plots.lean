@@ -8,7 +8,7 @@ def genTileSet (size coreColors edgeColors : Nat)
   : IO (TileSet size (Color.withBorder edgeColors coreColors)) := do
   let b ← GenBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b
-  return t.tileSet
+  return ← t.tileSet.scramble
 
 def fetchEternity2Tiles : IO (TileSet 16 (Color.withBorder 5 17)) := do
   let ts ← TileSet.fromFile "../puzzles/e2pieces.txt"

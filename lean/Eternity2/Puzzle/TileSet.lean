@@ -13,6 +13,19 @@ def TileBoard.tileSet (tb : TileBoard size c) : TileSet size c :=
 
 namespace TileSet
 
+/- Randomly rotate the tiles, and mix up their order -/
+def scramble (ts : TileSet size (Color.withBorder b c))
+  : IO (TileSet size (Color.withBorder b c)) := do
+  /- Rotate the pieces -/
+  let rotated ← ts.tiles.mapM (fun tile => do
+    let rot ← IO.rand 0 3
+    return tile.rotln rot)
+  /- Randomly permute the corners/sides/centers -/
+  let corners ← rotated.filter (·.isCorner) |> IO.randPerm
+  let sides   ← rotated.filter (·.isSide)   |> IO.randPerm
+  let centers ← rotated.filter (·.isCenter) |> IO.randPerm
+  return ⟨corners ++ sides ++ centers⟩
+
 def toFileFormat (ts : TileSet size (Color.withBorder b c)) : String :=
   s!"c {size}x{size} board with {b} border colors, {c} center colors\n" ++
   s!"p tile {size} {size}\n" ++
