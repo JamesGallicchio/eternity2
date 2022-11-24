@@ -1,5 +1,21 @@
 import Std
 
+def List.enum' (L : List α) : List (Fin L.length × α) :=
+  let rec go (rest : List α) (i : Nat)
+              (h : i + rest.length = L.length) :=
+    match rest, h with
+    | [], _ => []
+    | (x :: xs), h =>
+      (⟨i, (h.symm ▸ Nat.lt_add_of_pos_right (Nat.zero_lt_succ _))⟩, x)
+      :: go xs (i+1) (by
+        simp [←h, Nat.add_succ, Nat.succ_add])
+  go L 0 (by simp)
+
+def Fin.last (n : Nat) (_ : 0 < n) : Fin n :=
+  match n with
+  | 0 => by contradiction
+  | n+1 => ⟨n, Nat.le_refl _⟩
+
 def Function.iterate (f : α → α) : Nat → (α → α)
 | 0 => id
 | n+1 => iterate f n ∘ f

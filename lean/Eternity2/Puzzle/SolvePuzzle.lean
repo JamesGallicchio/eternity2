@@ -12,7 +12,7 @@ def decodeDiamondBoard (tsv : Constraints.TileSetVariables size b c)
     board :=
       Array.init _ (fun k =>
           List.fins _
-            |>.find? (fun color => s.find? (tsv.diamond_vars (.ofFin k) color) |>.get!)
+            |>.find? (fun color => s.find? (tsv.diamond_vars (.ofFin k) color) |>.getD false)
       )
     boardsize := by simp
   }

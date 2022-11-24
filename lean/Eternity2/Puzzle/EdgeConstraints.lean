@@ -366,13 +366,34 @@ def puzzleConstraints (ts : TileSet size (Color.withBorder b c)) (onlyEdge : Boo
     essentialConstraints tsv onlyEdge
     return tsv
 
+/- Break rotational symmetry by assigning a corner to (0,0) -/
 def fixCorner (ts : TileSetVariables size b c) : EncCNF Unit := do
-  -- Break rotational symmetry by assigning a corner to (0,0)
   if h:size > 0 then
     for (i, _) in ts.tiles.enum.find? (·.2.isCorner) do
       if hi:_ then
         addClause [ts.piece_vars ⟨i, hi⟩ ⟨⟨0,h⟩,⟨0,h⟩⟩]
       else panic! "woah"
+
+/- Constrain board to be the i'th corner configuration -/
+def fixCorners (ts : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := do
+  if h:size > 0 then
+    let corners := ts.tiles.enum'.filter (fun (_, t) => t.isCorner)
+    match corners with
+    | [a,b,c,d] =>
+      let (b,c,d) :=
+        match num with
+        | 0 => (b,c,d)
+        | 1 => (b,d,c)
+        | 2 => (c,b,d)
+        | 3 => (c,d,b)
+        | 4 => (d,b,c)
+        | 5 => (d,c,b)
+      EncCNF.addClause [ts.piece_vars (ts.h_ts ▸ a.1) ⟨⟨0,h⟩,        ⟨0,h⟩⟩]
+      EncCNF.addClause [ts.piece_vars (ts.h_ts ▸ b.1) ⟨⟨0,h⟩,        Fin.last _ h⟩]
+      EncCNF.addClause [ts.piece_vars (ts.h_ts ▸ c.1) ⟨Fin.last _ h, ⟨0,h⟩⟩]
+      EncCNF.addClause [ts.piece_vars (ts.h_ts ▸ d.1) ⟨Fin.last _ h, Fin.last _ h⟩]
+    | _ =>
+      panic! s!"Tileset had {corners.length} corners"
 
 def associatePolarities (ts : TileSetVariables size b c)
         (signVars : List (Tile (Color.withBorder b c) × EncCNF.Var))

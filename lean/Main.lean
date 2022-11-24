@@ -42,43 +42,5 @@ def mainCmd := `[Cli|
     genTileSetCmd
 ]
 
-def main (args : List String) : IO Unit := do
-  plotPuzzleSolCounts (args[0]!.toNat!)
-  -- let tb := (← GenBoard.generate 6 10 3).tileBoard
-  -- IO.println tb
-  -- IO.println ""
-  -- let ts := tb.tileSet
-  -- let (tsv,enc) := EncCNF.new do
-    -- match ← Constraints.puzzleConstraints ts with
-    -- | .error s => return panic! s!"it got sad :(\n{s}"
-    -- | .ok tsv =>
-      -- let () ← Constraints.fixCorner tsv
-      -- let vList ← Constraints.colorCardConstraints tsv.tiles
-      -- let () ← Constraints.associatePolarities tsv vList sorry
-      -- return pure tsv
-  -- IO.FS.withFile "test-cnf.txt" .write (fun h => do
-    -- enc.prettyPrintAux h.putStrLn
-    -- h.putStrLn ""
-  -- )
-  -- let tsv ← tsv
-  -- IO.FS.withFile "test.txt" .write (fun h =>
-    -- h.putStrLn ""
-  -- )
-  -- IO.FS.withFile "test-p.txt" .write (fun h =>
-    -- h.putStrLn ""
-  -- )
-  -- match
-    -- ← SolvePuzzle.solveAll enc tsv
-  -- with
-  -- | [] => IO.println "failed"
-  -- | sols =>
-    -- IO.println s!"{sols.length}"
-    -- IO.FS.withFile "test.txt" .write (fun h =>
-    -- for s in sols do
-    --   h.putStrLn ""
-    --   h.putStrLn
-    --     <| toString
-    --     <| s.tileBoard.mapColors (fun | none => " " | some a => toString a)
-    -- )
-  -- IO.println <|
-    -- a.tileBoard.mapColors (fun | none => " " | some a => toString a)
+def main (args : List String) : IO UInt32 :=
+  mainCmd.validate args

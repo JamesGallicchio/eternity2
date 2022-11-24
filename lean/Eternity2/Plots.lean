@@ -88,12 +88,12 @@ def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
       return tsv.borderDiamondVarList
 
 def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
-  plotData "corr_sign_puzzle_timed" ["signsols","puzzlesols",/-"soltime",-/"soltime_withsigns"]
+  plotData "corr_sign_puzzle_timed" ["signsols","puzzlesols","soltime","puzzlesols_withsigns","soltime_withsigns"]
     size fun ts => do
       -- Count solutions to just polarity constraints
       let signsols ← (do
         let (blocking_vars, state) := EncCNF.new do
-          let tile_vars ← Constraints.colorCardConstraints ts.tiles 
+          let tile_vars ← Constraints.colorCardConstraints ts.tiles
           return tile_vars.map (·.2)
 
         let count ← IO.mkRef 0
@@ -104,21 +104,22 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
         return ← count.get)
       
       -- Count solutions to just puzzle constraints (and time it)
---      let (soltime, puzzlesols) ← IO.timeMs (do
---        let (blocking_vars, state) := EncCNF.new do
---          match ← Constraints.puzzleConstraints ts with
---          | .error s => panic! s!"it got sad :(\n{s}"
---          | .ok tsv =>
---            return tsv.diamondVarList
---
---        let count ← IO.mkRef 0
---
---        SATSolve.allSols state (reportProgress := true) blocking_vars
---          (perItem := fun _ => count.modify (·+1))
---        
---        return ← count.get)
+      let (soltime, puzzlesols) ← IO.timeMs (do
+        let (blocking_vars, state) := EncCNF.new do
+          match ← Constraints.puzzleConstraints ts with
+          | .error s => panic! s!"it got sad :(\n{s}"
+          | .ok tsv =>
+            let () ← Constraints.fixCorner tsv
+            return tsv.diamondVarList
 
-      -- Count solutions to just puzzle constraints (and time it)
+        let count ← IO.mkRef 0
+
+        SATSolve.allSols state (reportProgress := true) blocking_vars
+          (perItem := fun _ => count.modify (·+1))
+        
+        return ← count.get)
+
+      -- Count solutions to puzzle constraints with sign constraints (and time it)
       let (soltime_withsigns, puzzlesols') ← IO.timeMs (do
         let (blocking_vars, state) := EncCNF.new do
           match ← Constraints.puzzleConstraints ts with
@@ -138,15 +139,19 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
       
 --      assert! (puzzlesols = puzzlesols')
 
-      return [toString signsols, toString puzzlesols', /-toString soltime,-/ toString soltime_withsigns]
+      return  [ toString signsols
+              , toString puzzlesols, toString soltime
+              , toString puzzlesols', toString soltime_withsigns
+              ]
 
 def findEternityEdgeSols : IO Unit := do
   let e2 ← fetchEternity2Tiles
   match EncCNF.new do
-    let _   ← Constraints.colorCardConstraints e2.tiles
     (Constraints.puzzleConstraints e2 (onlyEdge := true)).bind (m := EncCNF)
       (fun tsv => do
         Constraints.fixCorner tsv
+        let vList ← Constraints.colorCardConstraints tsv.tiles
+        let () ← Constraints.associatePolarities tsv vList sorry
         return tsv
       )
   with
@@ -154,12 +159,14 @@ def findEternityEdgeSols : IO Unit := do
     IO.println s!"Error building encoding: {s}"
   | (.ok tsv, state) =>
   let count ← IO.mkRef 0
-  SATSolve.allSols state (reportProgress := true) tsv.borderDiamondVarList
+  SATSolve.allSols state (reportProgress := true) tsv.diamondVarList (varsToBlock := tsv.borderDiamondVarList)
     (perItem := fun assn => do
       let i ← count.modifyGet (fun ct => (ct, ct + 1))
-      IO.FS.withFile s!"temp/border_sols/e2_border_sol_{i}.txt" .write (fun handle =>
-        for var in tsv.borderDiamondVarList do
-          for isTrue in assn.find? var do
-            handle.putStrLn <| s!"{state.names.find! var} {isTrue}"
+      let sol := SolvePuzzle.decodeDiamondBoard tsv assn
+      IO.FS.createDirAll "border_sols/v2/"
+      IO.FS.withFile s!"border_sols/v2/e2_border_sol_{i}.txt" .write (fun handle =>
+        handle.putStrLn <| toString <| sol.tileBoard.mapColors (·.map (toString ·) |>.getD " ")
       )
     )
+
+
