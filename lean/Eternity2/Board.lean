@@ -225,6 +225,7 @@ def withBorder (borderColors centerColors : Nat) :=
   Fin (borderColors + centerColors + 1)
 
 instance : DecidableEq (withBorder b c) := show DecidableEq (Fin _) from inferInstance
+instance : Inhabited (withBorder b c) where default := ⟨0, Nat.zero_lt_succ _⟩
 
 def frameColor : withBorder b c := ⟨0, by simp [withBorder]; exact Nat.zero_lt_succ _⟩
 def borderColor (i : Fin b) : withBorder b c := ⟨i.val+1, by
@@ -267,7 +268,7 @@ end Color
 
 structure Tile (color : Type u) where
   (up right down left : color)
-deriving BEq
+deriving BEq, Inhabited
 
 inductive Sign
 | plus  : Sign
@@ -295,9 +296,16 @@ def rotl : Tile c → Tile c
 
 def rotln (n : Nat) : Tile c → Tile c := Function.iterate rotl n
 
+def numRotations [BEq c] (tile1 tile2 : Tile c) :=
+  if rotate 0 then some 0 else
+  if rotate 1 then some 1 else
+  if rotate 2 then some 2 else
+  if rotate 3 then some 3 else
+  none
+where rotate n := rotln n tile2 == tile1
+
 def eq [BEq c] (tile1 tile2 : Tile c) :=
-  rotate 0 || rotate 1 || rotate 2 || rotate 3
-where rotate n := rotln n tile1 == tile2
+  numRotations tile1 tile2 |>.isSome
 
 def colors : Tile c → List c
 | {up, right, down, left} => [up,right,down,left]

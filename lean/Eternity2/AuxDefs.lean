@@ -10,6 +10,12 @@ def Array.init (n : Nat) (f : Fin n → α) : Array α := Id.run do
     A := A.push (f ⟨i,h.2⟩)
   return A
 
+def Array.initM [Monad m] (n : Nat) (f : Fin n → m α) : m (Array α) := do
+  let mut A := Array.mkEmpty n
+  for h:i in [0:n] do
+    A := A.push (← f ⟨i,h.2⟩)
+  return A
+
 theorem Array.init_zero : Array.init 0 f = #[] := by
   simp [init, Id.run, forIn', Std.Range.forIn']
   unfold Std.Range.forIn'.loop
