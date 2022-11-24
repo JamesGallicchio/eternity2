@@ -3,9 +3,12 @@
 /lean/build
 /lean/lean_packages/*
 !/lean/lean_packages/manifest.json
-/lean/temp
 
 /py/__pycache__
+
+/lean/temp
+/lean/plots
+/lean/border_sols
 
 *.cnf
 *.drat
