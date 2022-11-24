@@ -64,8 +64,8 @@ def countSols (count : IO.Ref Nat)
   count.modify (·+1)
   match output with
   | some (file, tsv) => (
-    match SolvePuzzle.decodeTileBoard tsv asgn with
-    | .ok tileboard => SolvePuzzle.writeSolution file tsv tileboard
+    match SolvePuzzle.decodeDiamonds tsv asgn |>.expectFull with
+    | .ok board => SolvePuzzle.writeSolution file tsv board
     | .error s => panic! s
   )
   | none => return
@@ -188,8 +188,9 @@ def findEternityEdgeSols : IO Unit := do
   SATSolve.allSols state (reportProgress := true) tsv.diamondVarList (varsToBlock := tsv.borderDiamondVarList)
     (perItem := fun assn => do
       let i ← count.modifyGet (fun ct => (ct, ct + 1))
-      let sol := SolvePuzzle.decodeDiamondBoard tsv assn
+      let sol := SolvePuzzle.decodeDiamonds tsv assn
       IO.FS.createDirAll "border_sols/v2/"
+      /- TODO: Better output format here -/
       IO.FS.withFile s!"border_sols/v2/e2_border_sol_{i}.txt" .write (fun handle =>
         handle.putStrLn <| toString <| sol.tileBoard.mapColors (·.map (toString ·) |>.getD " ")
       )
@@ -221,15 +222,15 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
     solveAndOutput tsv enc counter
   Log.info s!"All solutions to {name} found"
 where
-  solveAndOutput tsv enc counter := do
+  solveAndOutput tsv enc counter : Log IO _ := fun handle => do
     SATSolve.allSols enc
       (tsv.pieceVarList ++ tsv.diamondVarList)
       tsv.diamondVarList
       (reportProgress := false)
-      (fun assn => do
+      (fun assn => Log.run handle do
         let num ← counter.modifyGet (fun i => (i,i+1))
         Log.info s!"Board {name}: Found solution #{num}"
-        match SolvePuzzle.decodeTileBoard tsv assn with
+        match SolvePuzzle.decodeDiamonds tsv assn |>.expectFull with
         | .error s =>
           Log.error s!"Failed to decode board {name} solution #{num}: {s}"
         | .ok board =>
