@@ -16,8 +16,17 @@ def fetchEternity2Tiles : IO (TileSet 16 (Color.withBorder 5 17)) := do
   | ⟨16, 5, 17, tiles⟩ => return tiles
   | ⟨size,b,c,_⟩ => panic! s!"e2pieces.txt has size {size} and {b},{c} colors??"
 
-def plotData (name : String) (colLabels : List String) (size : Nat)
-  (calcData : {b c : Nat} → TileSet size (Color.withBorder b c) → IO (List String)) : IO Unit := do
+/-
+ - Generates boards of a specific size with a variety of colors and outputs
+ -  and computes some metric with `calcData`
+ -/
+def plotData (name : String)
+             (colLabels : List String)
+             (size : Nat)
+             (calcData : {b c : Nat}
+                       → TileSet size (Color.withBorder b c)
+                       → IO (List String))
+           : IO Unit := do
   let plotsDir : FilePath := "./plots/"
   let outputFile : FilePath := plotsDir / s!"output_{name}_{size}.csv"
   let boardsDir : FilePath := plotsDir / "board"
@@ -47,15 +56,32 @@ def plotData (name : String) (colLabels : List String) (size : Nat)
           <| [boardTitle, toString size, toString colors] ++ data
       )
 
-def plotSolCounts (name : String) (size : Nat)
-      (encoding : {b c : Nat} → TileSet size (Color.withBorder b c) → EncCNF (List EncCNF.Var))
-      : IO Unit := do
-  plotData name ["sols"] size fun tiles => do
+def countSols (count : IO.Ref Nat)
+              (output : Option ( FilePath
+                               × Constraints.TileSetVariables size b c))
+              (asgn : Std.HashMap EncCNF.Var Bool)
+            : IO Unit := do
+  count.modify (·+1)
+  match output with
+  | some (file, tsv) => (
+    match SolvePuzzle.decodeTileBoard tsv asgn with
+    | .ok tileboard => SolvePuzzle.writeSolution file tsv tileboard
+    | .error s => panic! s
+  )
+  | none => return
+
+def plotSolCounts (name : String)
+                  (size : Nat)
+                  (encoding : {b c : Nat}
+                            → TileSet size (Color.withBorder b c)
+                            → EncCNF (List EncCNF.Var))
+                : IO Unit := do
+  plotData name ["sols"] size @fun b c tiles => do
     let (blocking_vars, state) := EncCNF.new (encoding tiles)
     let count ← IO.mkRef 0
 
     SATSolve.allSols state (reportProgress := true) blocking_vars
-      (perItem := fun _ => count.modify (·+1))
+      (perItem := @countSols size b c count none)
 
     return [toString <| ←count.get]
 
@@ -89,7 +115,7 @@ def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
 
 def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
   plotData "corr_sign_puzzle_timed" ["signsols","puzzlesols","soltime","puzzlesols_withsigns","soltime_withsigns"]
-    size fun ts => do
+    size @fun b c ts => do
       -- Count solutions to just polarity constraints
       let signsols ← (do
         let (blocking_vars, state) := EncCNF.new do
@@ -99,10 +125,10 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
         let count ← IO.mkRef 0
 
         SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := fun _ => count.modify (·+1))
-        
+          (perItem := @countSols size b c count none)
+
         return ← count.get)
-      
+
       -- Count solutions to just puzzle constraints (and time it)
       let (soltime, puzzlesols) ← IO.timeMs (do
         let (blocking_vars, state) := EncCNF.new do
@@ -133,10 +159,10 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
         let count ← IO.mkRef 0
 
         SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := fun _ => count.modify (·+1))
-        
+          (perItem := @countSols size b c count none)
+
         return ← count.get)
-      
+
 --      assert! (puzzlesols = puzzlesols')
 
       return  [ toString signsols
