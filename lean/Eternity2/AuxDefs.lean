@@ -139,15 +139,50 @@ where
   | i+1, h, acc => finsAux i (Nat.le_of_lt h) (⟨i,h⟩ :: acc)
 
 
-def parForIn [ForIn IO σ α] (xs : σ) (f : α → IO PUnit) : IO PUnit := do
+/- Better parallelism primitive, that is actually like Scala's Future -/
+def TaskIO (α) := IO (Task (Except IO.Error α))
+
+namespace TaskIO
+
+instance : Monad TaskIO where
+  pure a := pure (f := IO) <| Task.pure (Except.ok a)
+  bind a f := bind (m := IO) a (fun task =>
+    IO.bindTask task (fun res => do
+      let res ← ofExcept res
+      f res))
+
+instance : MonadLift IO TaskIO where
+  monadLift io := io.map (fun a => Task.pure (Except.ok a))
+
+def wait (task : TaskIO α) : IO α := do
+  let task ← task
+  let x ← IO.wait task
+  ofExcept x
+
+def par [ForIn IO σ α] (xs : σ) (f : α → TaskIO β)
+    : TaskIO (List β) := show IO _ from do
   let mut tasks := #[]
   for x in xs do
-    tasks := tasks.push (← IO.asTask (f x))
-  tasks.forM (ofExcept ·.get)
+    tasks := tasks.push (← (f x))
+  let task ← IO.mapTasks (fun bs => do
+    return ←bs.mapM (fun b => ofExcept b)
+  ) tasks.toList
+  return task
 
-syntax "parallel " "for " ident " in " termBeforeDo " do " doSeq : doElem
-macro_rules
-  | `(doElem| parallel for $x in $xs do $seq) => `(doElem| parForIn $xs fun $x => do $seq)
+def parUnit [ForIn IO σ α] (xs : σ) (f : α → TaskIO Unit)
+    : TaskIO Unit := do
+  let _allUnits ← par xs f
+  return ()
+
+def parTasks [ForIn IO σ α] (xs : σ) (f : α → IO β)
+    : TaskIO (List β) := do
+  par xs (fun a => liftM (n := IO) <| IO.asTask (do f a))
+
+def parTasksUnit [ForIn IO σ α] (xs : σ) (f : α → IO Unit)
+    : TaskIO Unit := do
+  parUnit xs (fun a => liftM (n := IO) <| IO.asTask (do f a))
+
+end TaskIO
 
 def Option.forIn [Monad m] (o : Option α) (b : β) (f : α → β → m (ForInStep β)) : m β := do
   match o with

@@ -50,7 +50,9 @@ def runGenAndSolveBoardsCmd (p : Parsed) : IO UInt32 := do
 
   IO.FS.writeFile logfile ""
   IO.FS.withFile logfile .append (fun handle =>
-    Log.run handle <| genAndSolveBoards output
+    TaskIO.wait <|
+      Log.run handle <|
+        genAndSolveBoards output
   )
 
   return 0
