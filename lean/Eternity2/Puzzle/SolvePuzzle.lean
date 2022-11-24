@@ -51,9 +51,14 @@ def writeSolution (filename : System.FilePath)
   )
   for (i, tile) in tsv.tiles.enum do
     let mut found := false
-    for y in [0, size] do
-      for x in [0, size] do
-        match Tile.numRotations tileboard.board[y]![x]! tile with
+    for hy : y in [0:size] do
+      for hx : x in [0:size] do
+        have : y < tileboard.board.size :=
+          tileboard.board_size.1.symm ▸ hy.2
+        have : x < tileboard.board[y].size := by
+          rw [tileboard.board_size.2]
+          exact hx.2
+        match Tile.numRotations tileboard.board[y][x] tile with
         | some rot =>
           found := true
           IO.FS.withFile filename .append (fun h =>
@@ -81,7 +86,7 @@ def readSolution (filename : System.FilePath)
     | _ => panic! s!"Incorrectly formatted sol line: {line}"
 
   let mut temp_board :=
-    Array.init size (fun y => Array.init size (fun x => none))
+    Array.init size (fun _ => Array.init size (fun _ => none))
   for (t,x,y,r) in data.map parseLine do
     temp_board :=
       temp_board.set! y (temp_board[y]!.set! x (some <| tsv.tiles[t]!.rotln r))
