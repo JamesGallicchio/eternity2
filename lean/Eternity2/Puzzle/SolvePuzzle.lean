@@ -6,7 +6,7 @@ namespace Eternity2.SolvePuzzle
 
 open Constraints EncCNF
 
-def decodeDiamondBoard (tsv : Constraints.TileSetVariables size b c)
+def decodeDiamonds (tsv : Constraints.TileSetVariables size b c)
               (s : Std.HashMap EncCNF.Var Bool) :=
   let tb : DiamondBoard size (Option (Color.withBorder b c)) := {
     board :=
@@ -18,7 +18,7 @@ def decodeDiamondBoard (tsv : Constraints.TileSetVariables size b c)
   }
   tb
 
-def decodeTileBoard
+def decodePieces
       (tsv : Constraints.TileSetVariables size b c)
       (s : Std.HashMap EncCNF.Var Bool)
     : Except String (TileBoard size (Color.withBorder b c)) := do
@@ -40,10 +40,9 @@ def decodeTileBoard
   }
   return tb
 
-
 def writeSolution (filename : System.FilePath)
                   (tsv : TileSetVariables size b c)
-                  (tileboard : TileBoard size (Color.withBorder b c))
+                  (board : DiamondBoard size (Color.withBorder b c))
                 : IO Unit := do
   IO.FS.withFile filename .write (fun h =>
     -- h.putStrLn "c pieceNum x y rotation"
@@ -51,14 +50,11 @@ def writeSolution (filename : System.FilePath)
   )
   for (i, tile) in tsv.tiles.enum do
     let mut found := false
-    for hy : y in [0:size] do
-      for hx : x in [0:size] do
-        have : y < tileboard.board.size :=
-          tileboard.board_size.1.symm ▸ hy.2
-        have : x < tileboard.board[y].size := by
-          rw [tileboard.board_size.2]
-          exact hx.2
-        match Tile.numRotations tileboard.board[y][x] tile with
+    for hx : x in [0:size] do
+      for hy : y in [0:size] do
+        let x : Fin size := ⟨x,hx.2⟩
+        let y : Fin size := ⟨y,hy.2⟩
+        match Tile.numRotations (board.diamond_to_tile x y) tile with
         | some rot =>
           found := true
           IO.FS.withFile filename .append (fun h =>
@@ -112,7 +108,7 @@ def solve (enc : EncCNF.State) (tsv : TileSetVariables size b c)
   let dVars := tsv.diamondVarList
   SATSolve.solve enc (pVars ++ dVars)
   |>.map fun (_, assn) =>
-  decodeDiamondBoard tsv assn
+  decodeDiamonds tsv assn
 
 def solveAll (enc : EncCNF.State) (tsv : TileSetVariables size b c)
   : IO (List (DiamondBoard size (Option (Color.withBorder b c)))) := do
@@ -120,6 +116,6 @@ def solveAll (enc : EncCNF.State) (tsv : TileSetVariables size b c)
   let dVars := tsv.diamondVarList
   let sols : IO.Ref (List _) ← IO.mkRef []
   SATSolve.allSols enc (pVars ++ dVars) (varsToBlock := dVars) (perItem := fun assn => do
-    sols.modify (decodeDiamondBoard tsv assn :: ·)
+    sols.modify (decodeDiamonds tsv assn :: ·)
   )
   return ←sols.get

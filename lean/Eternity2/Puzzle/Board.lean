@@ -102,6 +102,9 @@ def all (size : Nat) : List (SquareIndex size) :=
     List.fins size |>.map fun j =>
       ⟨i,j⟩
 
+instance : ToString (SquareIndex size) where
+  toString  | ⟨i, j⟩ => s!"horz {i} {j}"
+
 end SquareIndex
 
 
@@ -215,6 +218,10 @@ def isBorder (di : DiamondIndex size) : Bool :=
 def isCenter : DiamondIndex size → Bool
 | .vert i j => 0 < i && i < size && 0 < j.val && j < size.pred
 | .horz i j => 0 < i.val && i < size.pred && 0 < j && j < size
+
+instance : ToString (DiamondIndex size) where
+  toString  | .horz i j => s!"horz {i} {j}"
+            | .vert i j => s!"vert {i} {j}"
 
 end DiamondIndex
 
@@ -393,5 +400,13 @@ def tileBoard (dboard : DiamondBoard size c) : TileBoard size c :=
       dboard.diamond_to_tile row col
     ))
   , by simp⟩
+
+def expectFull (dboard : DiamondBoard size (Option c))
+  : Except String (DiamondBoard size c) := do
+  let board ← Array.initM (2 * (size * size.succ)) (fun idx => do
+    match dboard.board.get (dboard.boardsize ▸ idx) with
+    | none => throw s!"Diamond {DiamondIndex.ofFin idx}"
+    | some d => return d)
+  return ⟨board, sorry⟩
 
 end DiamondBoard

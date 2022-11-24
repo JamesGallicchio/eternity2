@@ -250,4 +250,7 @@ def error : String → Log m Unit := write "ERROR"
 
 def run (logfile : IO.FS.Handle) (la : Log m α) : m α := la logfile
 
+instance [Monad m] [Monad n] [MonadLift m n] : MonadLift (Log m) (Log n) where
+  monadLift mla := fun handle => liftM <| Log.run handle mla
+
 end Log

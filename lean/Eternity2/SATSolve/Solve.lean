@@ -32,10 +32,10 @@ def addAndResolve (s : CadicalSolver) (c : Clause) (varsToGet : List Var)
   solveAux s varsToGet
 
 /-- Find all solutions to a given CNF -/
-def allSols [Monad m] [MonadLiftT IO m] (enc : State) (varsToGet : List Var)
+def allSols (enc : State) (varsToGet : List Var)
             (varsToBlock : List Var := varsToGet)
             (reportProgress : Bool := false)
-            (perItem : HashMap Var Bool → m Unit): m Unit
+            (perItem : HashMap Var Bool → IO Unit): IO Unit
             := do
 
   let varsToGet := varsToGet.union varsToBlock
