@@ -241,7 +241,8 @@ instance : MonadLift m (Log m) where
 private def write (type : String) (s : String) : Log m Unit :=
   fun logfile => do
   let time ← (IO.monoMsNow : IO _)
-  logfile.putStrLn s!"[{time / 1000}.{time % 1000}] {type}: {s}"
+  let ms := toString <| time % 1000
+  logfile.putStrLn s!"[{time / 1000}.{"".pushn '0' (3-ms.length) ++ ms}] {type}: {s}"
   logfile.flush
 
 def info : String → Log m Unit := write "INFO"
