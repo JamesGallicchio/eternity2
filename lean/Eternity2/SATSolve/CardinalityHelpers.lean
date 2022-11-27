@@ -78,3 +78,18 @@ def atLeastK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
 def equalK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
   atMostK lits k
   atLeastK lits k
+
+def atMostOneList (lits : List Literal) : EncCNF Unit := do
+  match lits with
+  | []                      => return
+  | l1 :: []                => atMostK (Array.mkArray1 l1) 1
+  | l1 :: l2 :: []          => atMostK (Array.mkArray2 l1 l2) 1
+  | l1 :: l2 :: l3 :: rlits =>
+    let t ← mkTemp
+    atMostOneList (rlits.append [⟨t, false⟩]) -- not sure if i should be
+    atMostOneList (⟨t, false⟩ :: rlits)       --    including both clauses?
+    atMostK (Array.mkArray4 l1 l2 l3 ⟨t, true⟩) 1
+termination_by atMostOneList lits => lits.length
+
+def atMostOne (lits : Array Literal) : EncCNF Unit := do
+  atMostOneList lits.toList
