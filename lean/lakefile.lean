@@ -24,8 +24,8 @@ elab "#get_libstdcpp" : command =>
     args := #["libstdc++.so.6"]
   }
   match output.split (·.isWhitespace) with
-  | _ :: loc :: _ =>
-    logInfo s!"found libstdc++.so.6 at {loc}"
+  | name :: loc :: _ =>
+    logInfo s!"found {name} at {loc}"
     defLib (mkAppN (mkConst ``some [.zero]) #[
       mkConst ``System.FilePath,
       mkApp (mkConst ``System.FilePath.mk) (mkStrLit loc)])
