@@ -273,12 +273,12 @@ def genBoardSuite (output : FilePath) : IO Unit := do
 
 def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
-  for size in [4:17] do
-    let mut colors := 7*size-12
+  TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
+    let mut colors := 7*size-23
     let mut decreasing := true
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
-      for iter in [0:10] do
+      let timedOut ← TaskIO.parTasks [0:10] fun iter => do
         let ⟨s,b,c,ts⟩ ← TileSet.fromFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
         match EncCNF.new (do
@@ -292,13 +292,14 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
           let willTimeOut := (←IO.monoMsNow) > startTime + timeout
           if willTimeOut then
             timedOut.set true
-          return willTimeOut)
-        -- If any board in this category times out, stop decreasing
-        if ←timedOut.get then
-          decreasing := false
-        
+          return willTimeOut)        
         let runtime := (←IO.monoMsNow) - startTime
         IO.println s!"{size},{colors},{iter},{runtime}"
         (←IO.getStdout).flush
+        return ←timedOut.get
 
-      colors := colors - 1
+      -- If all boards in this category time out, stop decreasing
+      if timedOut.all (·) then
+        decreasing := false
+      else
+        colors := colors - 1
