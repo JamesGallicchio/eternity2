@@ -31,7 +31,8 @@ def toFileFormat (ts : TileSet size (Color.withBorder b c)) : String :=
   s!"p tile {size} {size}\n" ++
   String.intercalate "\n"
     ( ts.tiles.map (fun {up, right, down, left} =>
-        s!"{up} {right} {down} {left}")
+        s!"{up.val} {right.val} {down.val} {left.val}"
+      )
     ) ++ "\n"
 
 
