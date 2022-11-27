@@ -274,7 +274,7 @@ def genBoardSuite (output : FilePath) : IO Unit := do
 def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
   for size in [4:17] do
-    let mut colors := 100
+    let mut colors := 7*size-12
     let mut decreasing := true
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
@@ -299,5 +299,6 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
         
         let runtime := (←IO.monoMsNow) - startTime
         IO.println s!"{size},{colors},{iter},{runtime}"
+        (←IO.getStdout).flush
 
       colors := colors - 1
