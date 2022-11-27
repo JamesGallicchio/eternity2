@@ -26,6 +26,9 @@ instance : Inhabited CadicalSolver := ⟨new ()⟩
 @[extern "leancadical_add_clause"]
 opaque addClause (C : CadicalSolver) (L : @& List (Bool × Nat)) : CadicalSolver
 
+@[extern "leancadical_set_terminate"]
+opaque setTerminateCallback (C : CadicalSolver) (f : IO Bool) : CadicalSolver
+
 @[extern "leancadical_solve"]
 opaque solve (C : CadicalSolver) : CadicalSolver × Option Bool
 

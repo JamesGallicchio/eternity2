@@ -107,15 +107,18 @@ def solve (enc : EncCNF.State) (tsv : TileSetVariables size b c)
   let pVars := tsv.pieceVarList
   let dVars := tsv.diamondVarList
   SATSolve.solve enc (pVars ++ dVars)
-  |>.map fun (_, assn) =>
+  |>.2.getAssn?.map fun assn =>
   decodeDiamonds tsv assn
 
+/-- Find all solutions -/
 def solveAll (enc : EncCNF.State) (tsv : TileSetVariables size b c)
+  (termCond : Option (IO Bool) := none)
   : IO (List (DiamondBoard size (Option (Color.withBorder b c)))) := do
   let pVars := tsv.pieceVarList
   let dVars := tsv.diamondVarList
   let sols : IO.Ref (List _) ← IO.mkRef []
-  SATSolve.allSols enc (pVars ++ dVars) (varsToBlock := dVars) (perItem := fun assn => do
-    sols.modify (decodeDiamonds tsv assn :: ·)
-  )
+  SATSolve.allSols enc (pVars ++ dVars) (varsToBlock := dVars)
+    (termCond := termCond)
+    (perItem := fun assn => do
+      sols.modify (decodeDiamonds tsv assn :: ·))
   return ←sols.get

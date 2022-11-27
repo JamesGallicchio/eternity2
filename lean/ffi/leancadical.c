@@ -68,6 +68,9 @@ lean_obj_res leancadical_new(b_lean_obj_arg unit) {
     assert (unit == lean_box(0));
 
     CCaDiCaL *solver = ccadical_init();
+
+    ccadical_set_option(solver, "quiet", 1);
+
     return leancadical_box(solver);
 }
 
@@ -109,6 +112,32 @@ lean_obj_res leancadical_add_clause(lean_obj_arg s, b_lean_obj_arg L) {
     }
 
     ccadical_add(solver, 0);
+
+    return s;
+}
+
+int leancadical_terminate_handle(void *state) {
+    lean_closure_object *closure = lean_to_closure(state);
+
+    lean_inc(closure);
+
+    lean_object *res = lean_apply_1(closure, lean_io_mk_world());
+
+    lean_object *b = lean_io_result_get_value(res);
+    assert(lean_is_scalar(b));
+
+    size_t i = lean_unbox(b);
+    assert(i < 2);
+
+    return (int) i;
+}
+
+lean_obj_res leancadical_set_terminate(lean_obj_arg s, lean_obj_arg f) {
+    leancadical_ensure_exclusive(s);
+
+    CCaDiCaL *solver = leancadical_unbox(s);
+
+    ccadical_set_terminate(solver, f, &leancadical_terminate_handle);
 
     return s;
 }
