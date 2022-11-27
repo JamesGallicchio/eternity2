@@ -214,20 +214,21 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
       Log.run handle do
       let ((), enc) := EncCNF.run enc do
         Constraints.fixCorners tsv i
-      Log.info s!"Board {name}: Finding solutions for corner arrangement {i}"
-      solveAndOutput tsv enc counter
+      Log.info s!"Board {name} c{i}: Starting solver"
+      solveAndOutput tsv enc s!"{name} c{i}" counter
+      Log.info s!"Board {name} c{i}: Solver finished"
   else
     let ((), enc) := EncCNF.run enc do
       Constraints.fixCorner tsv
-    solveAndOutput tsv enc counter
-  Log.info s!"All solutions to {name} found"
+    solveAndOutput tsv enc name counter
+  IO.FS.writeFile (outputFolder / "done") ""
+  Log.info s!"Board {name}: All solutions found"
 where
-  solveAndOutput tsv enc counter : Log IO _ := fun handle => do
+  solveAndOutput tsv enc name counter : Log IO _ := fun handle => do
     SATSolve.allSols enc
       (tsv.pieceVarList ++ tsv.diamondVarList)
       tsv.diamondVarList
-      (reportProgress := false)
-      (fun assn => Log.run handle do
+      (perItem := fun assn => Log.run handle do
         let num ← counter.modifyGet (fun i => (i,i+1))
         Log.info s!"Board {name}: Found solution #{num}"
         match SolvePuzzle.decodeDiamonds tsv assn |>.expectFull with
@@ -239,13 +240,12 @@ where
         Log.info s!"Board {name}: Wrote solution #{num} to {file}"
       )
 
-/- -/
-def genAndSolveBoards (outputDir : FilePath) : Log TaskIO Unit := do
+def genAndSolveBoards (outputDir : FilePath)
+                      (size colors count : Nat)
+    : Log TaskIO Unit := do
   Log.info s!"Output directory: {outputDir}"
   fun handle => do
-  TaskIO.parUnit [7:10]                 fun size => do
-  TaskIO.parUnit [size+3,size+2,size+1] fun colors => do
-  TaskIO.parUnit [0:10]                 fun rep => do
+  TaskIO.parUnit [0:count] fun rep => do
     Log.run handle do
     let name := s!"tiles_{size}_{colors}__{rep}"
     Log.info s!"Generating tile set {name}"
@@ -257,3 +257,47 @@ def genAndSolveBoards (outputDir : FilePath) : Log TaskIO Unit := do
     IO.FS.createDir solDir
     Log.info s!"Finding solutions to {name}"
     outputAllSols name ts solDir (parallelize := true)
+
+
+
+
+def genBoardSuite (output : FilePath) : IO Unit := do
+  TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
+    IO.FS.createDir (output / s!"{size}")
+    for colors in [size+1:101] do
+      IO.FS.createDir (output / s!"{size}" / s!"{colors}")
+      for iter in [0:10] do
+        let ts ← genTileSet size colors (Nat.sqrt size + 1)
+        ts.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
+
+
+def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
+  IO.println "size,colors,iter,runtime(ms)"
+  for size in [4:17] do
+    let mut colors := 100
+    let mut decreasing := true
+    while decreasing && colors ≥ size+1 do
+      -- Solve each of the boards in this category
+      for iter in [0:10] do
+        let ⟨s,b,c,ts⟩ ← TileSet.fromFile (
+          boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
+        match EncCNF.new (do
+          return ← Constraints.puzzleConstraints ts)
+        with
+        | (.error s, _) => panic! ("Encoding failed :(\n" ++ s)
+        | (.ok tsv, enc) =>
+        let startTime ← IO.monoMsNow
+        let timedOut ← IO.mkRef false
+        let _ ← SolvePuzzle.solveAll enc tsv (termCond := some do
+          let willTimeOut := (←IO.monoMsNow) > startTime + timeout
+          if willTimeOut then
+            timedOut.set true
+          return willTimeOut)
+        -- If any board in this category times out, stop decreasing
+        if ←timedOut.get then
+          decreasing := false
+        
+        let runtime := (←IO.monoMsNow) - startTime
+        IO.println s!"{size},{colors},{iter},{runtime}"
+
+      colors := colors - 1
