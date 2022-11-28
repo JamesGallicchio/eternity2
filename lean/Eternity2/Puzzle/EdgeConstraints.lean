@@ -106,22 +106,6 @@ def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
     for (q,_) in SquareIndex.sides size do
       EncCNF.addClause [.not (tsv.piece_vars p q)]
 
-/-- A piece can be placed in atMostOne spot -/
-def pieceExplicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
-  for (_,p) in tsv.cornerTiles do
-    SquareIndex.corners size
-    |>.map (tsv.piece_vars p ·.1)
-    |> atMostOne
-  for (_,p) in tsv.sideTiles do
-    SquareIndex.sides size
-    |>.map (tsv.piece_vars p ·.1)
-    |> atMostOne
-  for (_,p) in tsv.centerTiles do
-    SquareIndex.center size
-    |>.map (tsv.piece_vars p ·.1)
-    |> atMostOne
-
-
 /-- Constrain each diamond has exactly one color (of the right type) -/
 def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   /- Frame (always frameColor) -/
@@ -369,6 +353,21 @@ def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : E
             , tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l
             ]
 
+/-- A piece can be placed in atMostOne spot -/
+def explicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
+  for (_,p) in tsv.cornerTiles do
+    SquareIndex.corners size
+    |>.map (tsv.piece_vars p ·.1)
+    |> atMostOne
+  for (_,p) in tsv.sideTiles do
+    SquareIndex.sides size
+    |>.map (tsv.piece_vars p ·.1)
+    |> atMostOne
+  for (_,p) in tsv.centerTiles do
+    SquareIndex.center size
+    |>.map (tsv.piece_vars p ·.1)
+    |> atMostOne
+
 def puzzleConstraints (ts : TileSet size (Color.withBorder b c)) (onlyEdge : Bool := false)
   : ExceptT String EncCNF (TileSetVariables size b c) := do
   match h_ts : decide <| ts.tiles.length = size * size with
@@ -383,7 +382,7 @@ def puzzleConstraints (ts : TileSet size (Color.withBorder b c)) (onlyEdge : Boo
     pieceConstraints tsv
     diamondConstraints tsv
     essentialConstraints tsv onlyEdge
-    pieceExplicitConstraints tsv
+    explicitConstraints tsv
     return tsv
 
 /- Break rotational symmetry by assigning a corner to (0,0) -/
