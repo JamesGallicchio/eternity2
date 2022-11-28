@@ -12,3 +12,6 @@
 
 *.cnf
 *.drat
+*.puz
+*.sol
+*.log
