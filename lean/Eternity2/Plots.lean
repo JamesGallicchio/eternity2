@@ -281,8 +281,11 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
       let timedOut ← TaskIO.parTasks [0:10] fun iter => do
         let ⟨s,b,c,ts⟩ ← TileSet.fromFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
-        match EncCNF.new (do
-          return ← Constraints.puzzleConstraints ts)
+        match EncCNF.new (show ExceptT _ _ _ from do
+          let tsv ← Constraints.puzzleConstraints ts
+          let polVars ← Constraints.colorCardConstraints ts.tiles
+          Constraints.associatePolarities tsv polVars (by sorry)
+          return tsv)
         with
         | (.error s, _) => panic! ("Encoding failed :(\n" ++ s)
         | (.ok tsv, enc) =>
