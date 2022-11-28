@@ -120,7 +120,7 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   for d in DiamondIndex.border size do
     EncCNF.addClause (Color.borderColors.map (tsv.diamond_vars d ·))
 
-    atMostOneList <| Color.borderColors.map (tsv.diamond_vars d ·)
+    atMostOne <| Color.borderColors.map (tsv.diamond_vars d ·)
 
     /- AMO constraint, defined pairwise -/
     -- for c in Color.borderColors do
@@ -135,7 +135,7 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   for d in DiamondIndex.center size do
     EncCNF.addClause (Color.centerColors.map (tsv.diamond_vars d ·))
 
-    atMostOneList <| Color.centerColors.map (tsv.diamond_vars d ·)
+    atMostOne <| Color.centerColors.map (tsv.diamond_vars d ·)
 
     -- for c in Color.centerColors do
     --   for c' in Color.centerColors do
