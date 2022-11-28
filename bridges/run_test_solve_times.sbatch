@@ -10,4 +10,4 @@
 #echo commands to stdout
 set -x
 
-~/eternity2/bridges/run_test_solve_times.sh $1
+~/eternity2/bridges/run_test_solve_times.sh $1 $2
