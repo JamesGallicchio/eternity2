@@ -3,17 +3,44 @@ open Lake DSL
 
 /-- The directory where cadical source will be cloned/maintained -/
 def cadicalDir : FilePath := "./cadical"
-/-- The path to `libstdc++.so.6` -/
-def libstdcpp : FilePath := "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+
+/-- Compute the path to `libstdc++.so.6` by running `whereis` -/
+elab "#get_libstdcpp" : command =>
+  open Lean Elab Command Term in do
+  let defLib (term : Expr) :=
+    liftTermElabM <| addAndCompile <| Declaration.defnDecl {
+        name := "libstdcpp"
+        levelParams := []
+        type := mkApp (mkConst ``Option [.zero]) (mkConst ``System.FilePath)
+        value := term
+        hints := .abbrev
+        safety := .safe
+      }
+  if System.Platform.isOSX then
+    defLib (mkApp (mkConst ``none [.zero]) (mkConst ``System.FilePath))
+    return
+  let output ← IO.Process.run {
+    cmd := "whereis"
+    args := #["libstdc++.so.6"]
+  }
+  match output.split (·.isWhitespace) with
+  | name :: loc :: _ =>
+    logInfo s!"found {name} at {loc}"
+    defLib (mkAppN (mkConst ``some [.zero]) #[
+      mkConst ``System.FilePath,
+      mkApp (mkConst ``System.FilePath.mk) (mkStrLit loc)])
+  | _ =>
+    logError ("whereis output malformed:\n" ++ output)
+
+#get_libstdcpp -- now available as `libstdcpp` declaration
 
 package eternity2 {
   moreLeancArgs := #[ "--verbose" ]
   moreLinkArgs := #[
     "-L" ++ (cadicalDir / "build").toString,
     "-I" ++ (cadicalDir / "src").toString,
-    "-lcadical",
-    libstdcpp.toString
-  ]
+    "-lcadical"]
+    ++ match libstdcpp with | none => #[] | some x => #[x.toString]
 }
 
 lean_lib Eternity2

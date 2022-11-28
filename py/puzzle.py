@@ -14,6 +14,7 @@ class Puzzle:
         self.colors = count_colors(self.pieces)
         self.dims = dims
         self.V = {}
+        self.IV = {}
         n, m = dims
         self.center_pos = []
         self.corner_pos = []
@@ -126,6 +127,7 @@ class Puzzle:
                         self.diamonds_pos.append(diamond_pos)
                         for color in range(1, self.colors+1):
                             self.V[(diamond_pos, color)] = t_id+cnt
+                            self.IV[self.V[(diamond_pos, color)]] = (diamond_pos, color)
                             cnt += 1
 
     # each piece needs to be in exactly one position
@@ -326,4 +328,4 @@ def piece_to_triangles(piece, pos, rot=None):
     return ans
 
 def is_border(i,j, dims):
-    return i == 0 or j == 0 or i == dims[0] or j == dims[1]
+    return i == 0 or j == 0 or i == dims[0]-1 or j == dims[1]-1

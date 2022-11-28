@@ -1,5 +1,21 @@
 import Std
 
+def List.enum' (L : List α) : List (Fin L.length × α) :=
+  let rec go (rest : List α) (i : Nat)
+              (h : i + rest.length = L.length) :=
+    match rest, h with
+    | [], _ => []
+    | (x :: xs), h =>
+      (⟨i, (h.symm ▸ Nat.lt_add_of_pos_right (Nat.zero_lt_succ _))⟩, x)
+      :: go xs (i+1) (by
+        simp [←h, Nat.add_succ, Nat.succ_add])
+  go L 0 (by simp)
+
+def Fin.last (n : Nat) (_ : 0 < n) : Fin n :=
+  match n with
+  | 0 => by contradiction
+  | n+1 => ⟨n, Nat.le_refl _⟩
+
 def Function.iterate (f : α → α) : Nat → (α → α)
 | 0 => id
 | n+1 => iterate f n ∘ f
@@ -8,6 +24,12 @@ def Array.init (n : Nat) (f : Fin n → α) : Array α := Id.run do
   let mut A := Array.mkEmpty n
   for h:i in [0:n] do
     A := A.push (f ⟨i,h.2⟩)
+  return A
+
+def Array.initM [Monad m] (n : Nat) (f : Fin n → m α) : m (Array α) := do
+  let mut A := Array.mkEmpty n
+  for h:i in [0:n] do
+    A := A.push (← f ⟨i,h.2⟩)
   return A
 
 theorem Array.init_zero : Array.init 0 f = #[] := by
@@ -70,34 +92,24 @@ theorem Array.size_init : (Array.init n f).size = n := by
   . next ih =>
     simp [init_succ]; exact ih
 
-private theorem thing (hi : i < n) (h : n = n')
-  : h ▸ (⟨i,hi⟩ : Fin n) = ⟨i, h ▸ hi⟩
-  := by cases h; simp
-
---set_option pp.all true in
 @[simp]
-theorem Array.get_init : (Array.init n f)[i] = f (@size_init n _ f ▸ i) := by
-  induction n with
-  | zero => simp at i; exact i.elim0
+theorem Array.get_init {i : Nat} {h} : (Array.init n f)[i]'h = f ⟨i, @size_init n _ f ▸ h⟩ := by
+  induction n generalizing i with
+  | zero => simp at h; exact False.elim <| Nat.not_lt_zero _ h
   | succ n ih =>
     simp [init_succ, get_push]
     split
     next h =>
-      have := @ih (fun i => f ⟨i,Nat.lt_trans i.isLt (by exact Nat.le_refl _)⟩) ⟨i,by simp; assumption⟩
-      cases i; case mk i hi =>
+      have := @ih (fun i => f ⟨i,Nat.lt_trans i.isLt (by exact Nat.le_refl _)⟩) i (by simp; assumption)
       simp at this ⊢
       rw [this]
-      congr
-      simp [thing]
-    next h =>
-      cases i; case mk i hi =>
-      simp at h
+    next h' =>
+      simp at h'
       have : i = n := Nat.le_antisymm
-        (Nat.le_of_succ_le_succ (by rw [size_init] at hi; exact hi))
-        h
+        (Nat.le_of_succ_le_succ (by rw [size_init] at h; exact h))
+        h'
       cases this
       congr
-      simp [thing]
 
 def Nat.sqrt (n : Nat) : Nat :=
   let guess := n / 2
@@ -115,7 +127,7 @@ termination_by iter guess => guess
 def List.distinct [DecidableEq α] (L : List α) : List α :=
   L.foldl (·.insert ·) []
 
-def List.isDistinct [DecidableEq α] : List α → Bool
+def List.isDistinct [BEq α] : List α → Bool
 | [] => true
 | x::xs => !xs.contains x && xs.isDistinct
 
@@ -127,15 +139,50 @@ where
   | i+1, h, acc => finsAux i (Nat.le_of_lt h) (⟨i,h⟩ :: acc)
 
 
-def parForIn [ForIn IO σ α] (xs : σ) (f : α → IO PUnit) : IO PUnit := do
+/- Better parallelism primitive, that is actually like Scala's Future -/
+def TaskIO (α) := IO (Task (Except IO.Error α))
+
+namespace TaskIO
+
+instance : Monad TaskIO where
+  pure a := pure (f := IO) <| Task.pure (Except.ok a)
+  bind a f := bind (m := IO) a (fun task =>
+    IO.bindTask task (fun res => do
+      let res ← ofExcept res
+      f res))
+
+instance : MonadLift IO TaskIO where
+  monadLift io := io.map (fun a => Task.pure (Except.ok a))
+
+def wait (task : TaskIO α) : IO α := do
+  let task ← task
+  let x ← IO.wait task
+  ofExcept x
+
+def par [ForIn IO σ α] (xs : σ) (f : α → TaskIO β)
+    : TaskIO (List β) := show IO _ from do
   let mut tasks := #[]
   for x in xs do
-    tasks := tasks.push (← IO.asTask (f x))
-  tasks.forM (ofExcept ·.get)
+    tasks := tasks.push (← (f x))
+  let task ← IO.mapTasks (fun bs => do
+    return ←bs.mapM (fun b => ofExcept b)
+  ) tasks.toList
+  return task
 
-syntax "parallel " "for " ident " in " termBeforeDo " do " doSeq : doElem
-macro_rules
-  | `(doElem| parallel for $x in $xs do $seq) => `(doElem| parForIn $xs fun $x => do $seq)
+def parUnit [ForIn IO σ α] (xs : σ) (f : α → TaskIO Unit)
+    : TaskIO Unit := do
+  let _allUnits ← par xs f
+  return ()
+
+def parTasks [ForIn IO σ α] (xs : σ) (f : α → IO β)
+    : TaskIO (List β) := do
+  par xs (fun a => liftM (n := IO) <| IO.asTask (do f a))
+
+def parTasksUnit [ForIn IO σ α] (xs : σ) (f : α → IO Unit)
+    : TaskIO Unit := do
+  parUnit xs (fun a => liftM (n := IO) <| IO.asTask (do f a))
+
+end TaskIO
 
 def Option.forIn [Monad m] (o : Option α) (b : β) (f : α → β → m (ForInStep β)) : m β := do
   match o with
@@ -154,3 +201,57 @@ def IO.timeMs (prog : IO α) : IO (Nat × α) := do
   let end_ ← IO.monoMsNow
 
   return (end_ - start, res)
+
+instance : GetElem String Nat Char (fun s i => i < s.length) where
+  getElem | xs, i, _ => xs.get (String.Pos.mk i)
+
+def randFin (n) (h : n > 0) : IO (Fin n) := do
+  let i ← IO.rand 0 n.pred
+  if h : i < n then
+    return ⟨i,h⟩
+  else
+    panic! s!"failed to get random number {i} < {n}"
+
+/- Generate a random permutation of the list.
+Implementation is quadratic in length of L. -/
+def IO.randPerm (L : List α) : IO (List α) :=
+  randPermTR L [] 0
+where randPermTR (L acc n) := do
+  match L with
+  | [] => return acc
+  | x::xs =>
+    let idx ← IO.rand 0 n
+    let acc' := acc.insertNth idx x
+    randPermTR xs acc' (n+1)
+
+ 
+def Log (m) [Monad m] [MonadLiftT IO m] (α) := IO.FS.Handle → m α
+
+namespace Log
+variable {m} [Monad m] [MonadLiftT IO m]
+
+instance : Monad (Log m) where
+  pure a := fun _ => pure a
+  bind la f := fun logfile =>
+    bind (la logfile) (fun a => f a logfile)
+
+instance : MonadLift m (Log m) where
+  monadLift ma := fun _ => ma
+
+private def write (type : String) (s : String) : Log m Unit :=
+  fun logfile => do
+  let time ← (IO.monoMsNow : IO _)
+  let ms := toString <| time % 1000
+  logfile.putStrLn s!"[{time / 1000}.{"".pushn '0' (3-ms.length) ++ ms}] {type}: {s}"
+  logfile.flush
+
+def info : String → Log m Unit := write "INFO"
+def warn : String → Log m Unit := write "WARN"
+def error : String → Log m Unit := write "ERROR"
+
+def run (logfile : IO.FS.Handle) (la : Log m α) : m α := la logfile
+
+instance [Monad m] [Monad n] [MonadLift m n] : MonadLift (Log m) (Log n) where
+  monadLift mla := fun handle => liftM <| Log.run handle mla
+
+end Log

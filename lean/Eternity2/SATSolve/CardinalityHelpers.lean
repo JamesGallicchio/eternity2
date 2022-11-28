@@ -78,3 +78,29 @@ def atLeastK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
 def equalK (lits : Array Literal) (k : Nat) : EncCNF Unit := do
   atMostK lits k
   atLeastK lits k
+
+def amoPairwise (lits : List Literal) : EncCNF Unit := do
+  match lits with
+  | []    => return
+  | x::xs =>
+    for y in xs do
+      EncCNF.addClause [x.not, y.not]
+    amoPairwise xs
+
+def amoCut4 (lits : List Literal) : EncCNF Unit := do
+  match lits with
+  | []                      => return
+  | l1 :: []                => amoPairwise [l1]
+  | l1 :: l2 :: []          => amoPairwise [l1, l2]
+  | l1 :: l2 :: l3 :: rlits =>
+    let t ← mkTemp
+    amoPairwise [⟨t, false⟩, l1, l2, l3]
+    -- atMostOneList (rlits.append [⟨t, false⟩])
+    amoCut4 (⟨t, true⟩ :: rlits)
+termination_by _ lits => lits.length
+
+def atMostOne (lits : List Literal) : EncCNF Unit :=
+  if lits.length ≤ 5 then
+    amoPairwise lits
+  else
+    amoCut4 lits

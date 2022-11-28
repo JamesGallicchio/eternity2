@@ -4,165 +4,42 @@ import Eternity2
 open Eternity2
 open System
 
-def genTileSet (size coreColors edgeColors : Nat) : IO (TileSet size coreColors) := do
-  let b ← DiamondBoard.generate size coreColors edgeColors
-  let t := DiamondBoard.tileBoard b false
-  return t.tileSet coreColors
-
-def fetchEternity2Tiles : IO (TileSet 16 22) := do
-  let ts ← TileSet.fromFile "../puzzles/e2pieces.txt"
-  match ts with
-  | ⟨16, 22, tiles⟩ => return tiles
-  | ⟨size,colors,_⟩ => panic! s!"e2pieces.txt has size {size} and {colors} colors??"
-
-def plotData (name : String) (colLabels : List String) (size : Nat)
-  (calcData : (colors : Nat) → TileSet size colors → IO (List String)) : IO Unit := do
-  let plotsDir : FilePath := "./plots/"
-  let outputFile : FilePath := plotsDir / s!"output_{name}_{size}.csv"
-  let boardsDir : FilePath := plotsDir / "board"
-
-  IO.FS.createDirAll boardsDir
-
-  IO.FS.withFile outputFile .write (fun handle =>
-    handle.putStrLn
-      <| String.intercalate ","
-      <| ["title", "size", "colors"] ++ colLabels
-  )
-  for i in [0:10] do
-    let colors := size + i
-    parallel for j in [0:10] do
-      let tiles ← genTileSet size colors (size.sqrt + 1)
-      let boardTitle := s!"{size}_{colors}_{j}"
-
-      IO.println s!"Board: {boardTitle}"
-
-      let data ← calcData colors tiles
-
-      IO.FS.withFile outputFile .append (fun handle => do
-        handle.putStrLn
-          <| String.intercalate ","
-          <| [boardTitle, toString size, toString colors] ++ data
-      )
-
-def plotSolCounts (name : String) (size : Nat)
-                      (encoding : (colors : Nat) → TileSet size colors → EncCNF (List EncCNF.Var))
-                      : IO Unit := do
-  plotData name ["sols"] size fun colors tiles => do
-    let (blocking_vars, state) := EncCNF.new (encoding colors tiles)
-    let count ← IO.mkRef 0
-    
-    SATSolve.allSols state (reportProgress := true) blocking_vars
-      (perItem := fun _ => count.modify (·+1))
-    
-    return [toString <| ←count.get]
-
-
-def plotSignSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "sign" size fun colors ts => do
-    let tile_vars ← Constraints.colorCardConstraints ts.tiles colors 
-    return tile_vars.map (·.2)
-
-def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "edgesign" size fun colors ts => do
-    let tile_vars ← Constraints.colorCardConstraints ts.tiles colors 
-    return tile_vars.filterMap (fun (t, v) =>
-      if !t.isCenter then some v else none)
-
-def plotPuzzleSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "puzzle" size fun _ ts => do
-    match ← Constraints.puzzleConstraints ts with
-    | .error s => panic! s!"it got sad :(\n{s}"
-    | .ok tsv => 
-      return tsv.diamondVarList
-
-def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "edgepuzzle" size fun _ ts => do
-    match ← Constraints.puzzleConstraints ts (onlyEdge := true) with
-    | .error s => panic! s!"it got sad :(\n{s}"
-    | .ok tsv => 
-      return tsv.borderDiamondVarList
-
-def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
-  plotData "corr_sign_puzzle_timed" ["signsols","puzzlesols","soltime","soltime_withsigns"]
-    size fun colors ts => do
-      -- Count solutions to just polarity constraints
-      let signsols ← (do
-        let (blocking_vars, state) := EncCNF.new do
-          let tile_vars ← Constraints.colorCardConstraints ts.tiles colors 
-          return tile_vars.map (·.2)
-
-        let count ← IO.mkRef 0
-
-        SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := fun _ => count.modify (·+1))
-        
-        return ← count.get)
-      
-      -- Count solutions to just puzzle constraints (and time it)
-      let (soltime, puzzlesols) ← IO.timeMs (do
-        let (blocking_vars, state) := EncCNF.new do
-          match ← Constraints.puzzleConstraints ts with
-          | .error s => panic! s!"it got sad :(\n{s}"
-          | .ok tsv => 
-            return tsv.diamondVarList
-
-        let count ← IO.mkRef 0
-
-        SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := fun _ => count.modify (·+1))
-        
-        return ← count.get)
-
-      -- Count solutions to just puzzle constraints (and time it)
-      let (soltime_withsigns, puzzlesols') ← IO.timeMs (do
-        let (blocking_vars, state) := EncCNF.new do
-          match ← Constraints.puzzleConstraints ts with
-          | .error s => panic! s!"it got sad :(\n{s}"
-          | .ok tsv => 
-            return tsv.diamondVarList
-
-        let count ← IO.mkRef 0
-
-        SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := fun _ => count.modify (·+1))
-        
-        return ← count.get)
-      
-      assert! (puzzlesols = puzzlesols')
-
-      return [toString signsols, toString puzzlesols, toString soltime, toString soltime_withsigns]
-
-def findEternityEdgeSols : IO Unit := do
-  let e2 ← fetchEternity2Tiles
-  match EncCNF.new do
-    let _   ← Constraints.colorCardConstraints e2.tiles 17
-    (Constraints.puzzleConstraints e2 (onlyEdge := true)).bind (m := EncCNF)
-      (fun tsv => do
-        Constraints.fixCorner tsv
-        return tsv
-      )
-  with
-  | (.error s, _) =>
-    IO.println s!"Error building encoding: {s}"
-  | (.ok tsv, state) =>
-  let count ← IO.mkRef 0
-  SATSolve.allSols state (reportProgress := true) tsv.borderDiamondVarList
-    (perItem := fun assn => do
-      let i ← count.modifyGet (fun ct => (ct, ct + 1))
-      IO.FS.withFile s!"temp/border_sols/e2_border_sol_{i}.txt" .write (fun handle =>
-        for var in tsv.borderDiamondVarList do
-          for isTrue in assn.find? var do
-            handle.putStrLn <| s!"{state.names.find! var} {isTrue}"
-      )
-    )
-
-
-
-
 open Cli
 
+/- Ensure directory exists -/
+def ensureDirectoryExists (file : FilePath) : IO Unit := do
+  if (←file.pathExists) then
+    if !(←file.isDir) then
+      throw (IO.Error.mkAlreadyExists 1
+        <| s!"Path {file} is a file; please delete it if you want"
+          ++ " to use this path as a directory.")
+  else
+    IO.FS.createDirAll file
+
+def ensureFileDNEOrAskToOverwrite (file : FilePath) : IO Unit := do
+  if ! (← file.pathExists) then
+    return
+  
+  if ← file.isDir then
+    IO.println <| s!"Path {file} is a directory; please delete it if"
+                ++ " you want to use it as a file."
+  else
+    IO.print <| s!"Path {file} already exists. Overwrite it? (y/n) "
+    let mut resp := none
+    while resp.isNone do
+      match ← (← IO.getStdin).getLine with
+      | "y\n" => resp := some true
+      | "n\n" => resp := some false
+      | _ => IO.print "Please respond \"y\" or \"n\": "
+    match resp with
+    | none => panic! "unreachable 98651320"
+    | some false =>
+      IO.println "Aborting process"
+      throw (IO.Error.mkAlreadyExistsFile file.toString 1 "User decided to not overwrite")
+    | some true =>
+      IO.FS.removeFile file
+
 def runGenTileSetCmd (p : Parsed) : IO UInt32 := do
-  IO.println "c generated randomly"
   let size : Nat := p.flag! "size" |>.as! Nat
   let colors : Nat := p.flag! "colors" |>.as! Nat
   let bordercolors : Nat := p.flag! "bordercolors" |>.as! Nat
@@ -171,13 +48,14 @@ def runGenTileSetCmd (p : Parsed) : IO UInt32 := do
   let bordercolors := if bordercolors = 0 then size.sqrt + 1 else bordercolors
 
   let ts ← genTileSet size colors bordercolors
+  IO.println "c generated randomly"
   IO.println ts.toFileFormat
 
   return 0
 
 
 def genTileSetCmd := `[Cli|
-  gen_tile_set VIA runGenTileSetCmd; ["0.0.1"]
+  "gen-tile-set" VIA runGenTileSetCmd; ["0.0.1"]
   "Generate a random tile set."
 
   FLAGS:
@@ -189,14 +67,92 @@ def genTileSetCmd := `[Cli|
     defaultValues! #[("colors", "0"), ("bordercolors", "0")]
 ]
 
+def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
+  let tileset : FilePath := p.flag! "tileset" |>.as! String
+  let output : FilePath := p.flag! "output" |>.as! String
+  let logfile : FilePath :=
+    p.flag? "logfile" |>.map (·.as! String)
+      |>.getD s!"{output}.log"
+
+
+  ensureDirectoryExists output
+  
+  ensureFileDNEOrAskToOverwrite logfile
+
+  match ← TileSet.fromFile tileset with
+  | ⟨_, _, _, tiles⟩ =>
+
+  IO.FS.writeFile logfile ""
+  IO.FS.withFile logfile .append (fun handle =>
+    TaskIO.wait <|
+      Log.run handle <|
+        outputAllSols tileset.toString tiles output (parallelize := true)
+  )
+
+  return 0
+
+def solveTileSetCmd := `[Cli|
+  "solve-tile-set" VIA runSolveTileSetCmd; ["0.0.1"]
+  "Solve the given tile set."
+
+  FLAGS:
+    tileset : String; "File containing the tileset to solve"
+    output : String; "Directory to output solutions"
+    logfile : String; "File for detailed logs"
+]
+
+def runGenBoardSuiteCmd (p : Parsed) : IO UInt32 := do
+  let output : FilePath := p.flag! "output" |>.as! String
+  let seed : Option Nat := p.flag? "seed" |>.map (·.as! Nat)
+
+  for seed in seed do
+    IO.setRandSeed seed
+
+  if ←output.pathExists then
+    IO.println s!"ERROR: Directory {output} already exists. Please delete the directory or choose a different name for the output directory."
+    return 1
+  
+  IO.FS.createDirAll output
+  
+  genBoardSuite output
+
+  return 0
+
+
+def genBoardSuiteCmd := `[Cli|
+  "gen-board-suite" VIA runGenBoardSuiteCmd; ["0.0.1"]
+  "Generate many random tile sets in the provided output directory."
+  
+  FLAGS:
+    output : String; "Directory to place generated files (directory will be created if DNE)"
+    seed : Nat; "Random seed to start with; intended for reproducibility"
+]
+
+def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
+  let suite : FilePath := p.flag! "boardsuite" |>.as! String
+  let timeout : Nat := p.flag! "timeout" |>.as! Nat
+  testSolveTimes suite timeout
+  return 0
+
+def testSolveTimesCmd := `[Cli|
+  "test-solve-times" VIA runTestSolveTimesCmd; ["0.0.1"]
+  "Sample solve times using a board suite. Outputs a CSV of the data"
+
+  FLAGS:
+    boardsuite : String; "Directory with the board suite"
+    timeout : Nat; "Timeout (in sec) to use when determining what color to stop sampling at"
+]
+
 def mainCmd := `[Cli|
   eternity2 NOOP; ["0.0.1"]
   "Tools working towards a solution to Eternity II"
 
   SUBCOMMANDS:
-    genTileSetCmd
+    genTileSetCmd;
+    genBoardSuiteCmd;
+    solveTileSetCmd;
+    testSolveTimesCmd
 ]
 
 def main (args : List String) : IO UInt32 := do
-  plotCorr_sign_puzzle_withTimes 6
-  return 0
+  mainCmd.validate args
