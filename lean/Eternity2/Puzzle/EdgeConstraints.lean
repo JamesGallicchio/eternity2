@@ -120,11 +120,13 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   for d in DiamondIndex.border size do
     EncCNF.addClause (Color.borderColors.map (tsv.diamond_vars d ·))
 
+    atMostOneList <| Color.borderColors.map (tsv.diamond_vars d ·)
+
     /- AMO constraint, defined pairwise -/
-    for c in Color.borderColors do
-      for c' in Color.borderColors do
-        if c.val < c'.val then
-          EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
+    -- for c in Color.borderColors do
+    --   for c' in Color.borderColors do
+    --     if c.val < c'.val then
+    --       EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
 
     for c in Color.allColors do
       if not (Color.withBorder.isBorderColor c) then
@@ -133,10 +135,12 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   for d in DiamondIndex.center size do
     EncCNF.addClause (Color.centerColors.map (tsv.diamond_vars d ·))
 
-    for c in Color.centerColors do
-      for c' in Color.centerColors do
-        if c.val < c'.val then
-          EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
+    atMostOneList <| Color.centerColors.map (tsv.diamond_vars d ·)
+
+    -- for c in Color.centerColors do
+    --   for c' in Color.centerColors do
+    --     if c.val < c'.val then
+    --       EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
 
     for c in Color.allColors do
       if not (Color.withBorder.isCenterColor c) then

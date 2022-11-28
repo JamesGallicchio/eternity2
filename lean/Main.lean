@@ -28,8 +28,8 @@ def ensureFileDNEOrAskToOverwrite (file : FilePath) : IO Unit := do
     let mut resp := none
     while resp.isNone do
       match ← (← IO.getStdin).getLine with
-      | "y" => resp := some true
-      | "n" => resp := some false
+      | "y\n" => resp := some true
+      | "n\n" => resp := some false
       | _ => IO.print "Please respond \"y\" or \"n\": "
     match resp with
     | none => panic! "unreachable 98651320"
