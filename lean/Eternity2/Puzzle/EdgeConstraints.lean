@@ -382,7 +382,7 @@ def pieceExplicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := 
 
 def forbiddenColors (tsv : TileSetVariables size b c) : EncCNF Unit := do
   for (t,p) in tsv.centerTiles do
-    let forbiddenColors := Color.centerColors.filter (t.colors.contains ·)
+    let forbiddenColors := Color.centerColors.filter (!t.colors.contains ·)
     for (q,ds) in SquareIndex.center size do
       /- If tile p is placed at q, then each bordering diamond cannot be
           among the forbidden colors -/

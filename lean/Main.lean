@@ -88,7 +88,7 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
     TaskIO.wait <|
       Log.run handle <|
         outputAllSols
-          tileset.toString tiles output
+          tileset.fileStem.get! tiles output
           { useRedundant, usePolarity}
           (parallelize := true)
   )

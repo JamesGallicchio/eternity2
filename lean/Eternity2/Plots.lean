@@ -203,6 +203,8 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
   | .error s =>
     Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
   | .ok (tsv, enc) =>
+  IO.FS.withFile (outputFolder / s!"{name}.enc") .write fun handle =>
+    enc.prettyPrintAux handle.putStrLn
   let counter ← IO.mkRef 0
   if parallelize then
     fun handle => do
