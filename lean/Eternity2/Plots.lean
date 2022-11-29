@@ -203,8 +203,8 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
   | .error s =>
     Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
   | .ok (tsv, enc) =>
-  IO.FS.withFile (outputFolder / s!"{name}.enc") .write fun handle =>
-    enc.prettyPrintAux handle.putStrLn
+  IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
+    enc.printAux handle.putStrLn
   let counter ← IO.mkRef 0
   if parallelize then
     fun handle => do
@@ -274,7 +274,7 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
     : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
-    let mut colors := 7*size-23
+    let mut colors := 5*size-15
     let mut decreasing := true
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
