@@ -140,9 +140,12 @@ def genBoardSuiteCmd := `[Cli|
 def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
   let suite : FilePath := p.flag! "boardsuite" |>.as! String
   let timeout : Nat := p.flag! "timeout" |>.as! Nat
+  let useRedundant := p.flag! "use-redundant" |>.as! Bool
+  let usePolarity := p.flag! "use-polarity" |>.as! Bool
+
   testSolveTimes suite timeout {
-    useRedundant := true
-    usePolarity := true
+    useRedundant,
+    usePolarity,
     fixCorner := true
   }
   return 0
@@ -154,6 +157,11 @@ def testSolveTimesCmd := `[Cli|
   FLAGS:
     boardsuite : String; "Directory with the board suite"
     timeout : Nat; "Timeout (in sec) to use when determining what color to stop sampling at"
+    "use-redundant" : Bool; "Use redundant clauses (forbidden color & explicit piece locations)"
+    "use-polarity" : Bool; "Use sign polarity constraints"
+  
+  EXTENSIONS:
+    defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
 ]
 
 def mainCmd := `[Cli|
