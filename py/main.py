@@ -52,7 +52,7 @@ if count:
     cnf.to_file(output_filename + '0')
     while True:
         print(f'FINDING SOLUTON #{cnt+1}')
-        return_call = sh(['cadical', output_filename + str(cnt), '--forcephase'])
+        return_call = sh(['yalsat', output_filename + str(cnt)])
         if return_call.returncode != 10:
             break
         sol = get_sol_from_output(return_call.stdout)
