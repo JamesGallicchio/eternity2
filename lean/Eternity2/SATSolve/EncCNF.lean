@@ -35,6 +35,10 @@ structure State where
 
 namespace State
 
+def new : State := ⟨1, [], HashMap.empty, ""⟩
+
+instance : Inhabited State := ⟨new⟩
+
 def printAux (println : String → IO Unit)
   : State → IO Unit
 | ⟨nextVar, clauses, names, _⟩ => do
@@ -112,13 +116,21 @@ end State
 end EncCNF
 
 @[reducible]
-def EncCNF := StateM EncCNF.State
+def EncCNF := ExceptT String (StateM EncCNF.State)
 
 namespace EncCNF
 
-nonrec def run (s : State) (e : EncCNF α) : α × State := e.run s
+nonrec def run? (s : State) (e : EncCNF α) : Except String (α × State) := do
+  let (a,s) := e.run s
+  return (←a, s)
 
-nonrec def new : EncCNF α → α × State := run ⟨1, [], HashMap.empty, ""⟩
+nonrec def run! [Inhabited α] (s : State) (e : EncCNF α) : α × State :=
+  (run? s e).toOption.get!
+
+nonrec def new? : EncCNF α → Except String (α × State)  := run? .new
+nonrec def new! [Inhabited α] : EncCNF α → α × State    := run! .new
+
+instance [Inhabited α] : Inhabited (EncCNF α) := ⟨do return default⟩
 
 def newCtx (name : String) (inner : EncCNF α) : EncCNF α := do
   let oldState ← get
@@ -147,7 +159,7 @@ def mkTemp : EncCNF Var := do
 
 
 example : IO Unit := do
-  let ((), enc) := new do
+  let ((), enc) := new! do
     let x ← mkVar "x1"
     newCtx "hi." do
       let t1 ← mkTemp

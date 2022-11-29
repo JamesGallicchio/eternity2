@@ -77,7 +77,7 @@ def plotSolCounts (name : String)
                             → EncCNF (List EncCNF.Var))
                 : IO Unit := do
   plotData name ["sols"] size @fun b c tiles => do
-    let (blocking_vars, state) := EncCNF.new (encoding tiles)
+    let (blocking_vars, state) := EncCNF.new! (encoding tiles)
     let count ← IO.mkRef 0
 
     SATSolve.allSols state (reportProgress := true) blocking_vars
@@ -99,26 +99,24 @@ def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
 
 def plotPuzzleSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "puzzle" size fun ts => do
-    match ← Constraints.puzzleConstraints ts with
-    | .error s => panic! s!"it got sad :(\n{s}"
-    | .ok tsv =>
-      Constraints.fixCorner tsv
-      return tsv.diamondVarList
+    let tsv ← Constraints.mkVars ts.tiles size
+    Constraints.compactEncoding tsv false
+    Constraints.fixCorner tsv
+    return tsv.diamondVarList
 
 def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "edgepuzzle" size fun ts => do
-    match ← Constraints.puzzleConstraints ts (onlyEdge := true) with
-    | .error s => panic! s!"it got sad :(\n{s}"
-    | .ok tsv =>
-      Constraints.fixCorner tsv
-      return tsv.borderDiamondVarList
+    let tsv ← Constraints.mkVars ts.tiles size
+    Constraints.compactEncoding tsv (onlyEdge := true)
+    Constraints.fixCorner tsv
+    return tsv.borderDiamondVarList
 
 def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
   plotData "corr_sign_puzzle_timed" ["signsols","puzzlesols","soltime","puzzlesols_withsigns","soltime_withsigns"]
     size @fun b c ts => do
       -- Count solutions to just polarity constraints
       let signsols ← (do
-        let (blocking_vars, state) := EncCNF.new do
+        let (blocking_vars, state) := EncCNF.new! do
           let tile_vars ← Constraints.colorCardConstraints ts.tiles
           return tile_vars.map (·.2)
 
@@ -131,12 +129,11 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
 
       -- Count solutions to just puzzle constraints (and time it)
       let (soltime, puzzlesols) ← IO.timeMs (do
-        let (blocking_vars, state) := EncCNF.new do
-          match ← Constraints.puzzleConstraints ts with
-          | .error s => panic! s!"it got sad :(\n{s}"
-          | .ok tsv =>
-            let () ← Constraints.fixCorner tsv
-            return tsv.diamondVarList
+        let (blocking_vars, state) := EncCNF.new! do
+          let tsv ← Constraints.mkVars ts.tiles size
+          Constraints.compactEncoding tsv
+          Constraints.fixCorner tsv
+          return tsv.diamondVarList
 
         let count ← IO.mkRef 0
 
@@ -147,14 +144,13 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
 
       -- Count solutions to puzzle constraints with sign constraints (and time it)
       let (soltime_withsigns, puzzlesols') ← IO.timeMs (do
-        let (blocking_vars, state) := EncCNF.new do
-          match ← Constraints.puzzleConstraints ts with
-          | .error s => panic! s!"it got sad :(\n{s}"
-          | .ok tsv =>
-            let () ← Constraints.fixCorner tsv
-            let vList ← Constraints.colorCardConstraints tsv.tiles
-            let () ← Constraints.associatePolarities tsv vList sorry
-            return tsv.diamondVarList
+        let (blocking_vars, state) := EncCNF.new! do
+          let tsv ← Constraints.mkVars ts.tiles size
+          Constraints.compactEncoding tsv
+          Constraints.fixCorner tsv
+          let vList ← Constraints.colorCardConstraints tsv.tiles
+          Constraints.associatePolarities tsv vList sorry
+          return tsv.diamondVarList
 
         let count ← IO.mkRef 0
 
@@ -172,18 +168,17 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
 
 def findEternityEdgeSols : IO Unit := do
   let e2 ← fetchEternity2Tiles
-  match EncCNF.new do
-    (Constraints.puzzleConstraints e2 (onlyEdge := true)).bind (m := EncCNF)
-      (fun tsv => do
-        Constraints.fixCorner tsv
-        let vList ← Constraints.colorCardConstraints tsv.tiles
-        let () ← Constraints.associatePolarities tsv vList sorry
-        return tsv
-      )
+  match EncCNF.new? do
+    let tsv ← Constraints.mkVars e2.tiles 16
+    Constraints.compactEncoding tsv (onlyEdge := true)
+    Constraints.fixCorner tsv
+    let vList ← Constraints.colorCardConstraints tsv.tiles
+    Constraints.associatePolarities tsv vList sorry
+    return tsv
   with
-  | (.error s, _) =>
+  | .error s =>
     IO.println s!"Error building encoding: {s}"
-  | (.ok tsv, state) =>
+  | .ok (tsv, state) =>
   let count ← IO.mkRef 0
   SATSolve.allSols state (reportProgress := true) tsv.diamondVarList (varsToBlock := tsv.borderDiamondVarList)
     (perItem := fun assn => do
@@ -200,25 +195,26 @@ def findEternityEdgeSols : IO Unit := do
 /- Outputs all solutions to a given tileset as solution files in `outputFolder`. -/
 def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
       (outputFolder : FilePath)
+      (es : EncodingSettings)
       (parallelize : Bool := false)
       : Log TaskIO Unit
   := do
-  match EncCNF.new (Constraints.puzzleConstraints ts) with
-  | (.error s, _) =>
+  match EncCNF.new? <| encodePuzzle ts es with
+  | .error s =>
     Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
-  | (.ok tsv, enc) =>
+  | .ok (tsv, enc) =>
   let counter ← IO.mkRef 0
   if parallelize then
     fun handle => do
     TaskIO.parUnit (List.fins 6) fun i => do
       Log.run handle do
-      let ((), enc) := EncCNF.run enc do
+      let ((), enc) := EncCNF.run! enc do
         Constraints.fixCorners tsv i
       Log.info s!"Board {name} c{i}: Starting solver"
       solveAndOutput tsv enc s!"{name} c{i}" counter
       Log.info s!"Board {name} c{i}: Solver finished"
   else
-    let ((), enc) := EncCNF.run enc do
+    let ((), enc) := EncCNF.run! enc do
       Constraints.fixCorner tsv
     solveAndOutput tsv enc name counter
   IO.FS.writeFile (outputFolder / "done") ""
@@ -256,7 +252,7 @@ def genAndSolveBoards (outputDir : FilePath)
     let solDir := outputDir / name
     IO.FS.createDir solDir
     Log.info s!"Finding solutions to {name}"
-    outputAllSols name ts solDir (parallelize := true)
+    outputAllSols name ts solDir (parallelize := true) {}
 
 
 
@@ -271,7 +267,9 @@ def genBoardSuite (output : FilePath) : IO Unit := do
         ts.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
 
 
-def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
+def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
+    (es : EncodingSettings)
+    : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
     let mut colors := 7*size-23
@@ -279,16 +277,13 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat) : IO Unit := do
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
       let timedOut ← TaskIO.parTasks [0:10] fun iter => do
-        let ⟨s,b,c,ts⟩ ← TileSet.fromFile (
+        let ⟨_,_,_,ts⟩ ← TileSet.fromFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
-        match EncCNF.new (show ExceptT _ _ _ from do
-          let tsv ← Constraints.puzzleConstraints ts
-          let polVars ← Constraints.colorCardConstraints ts.tiles
-          Constraints.associatePolarities tsv polVars (by sorry)
-          return tsv)
-        with
-        | (.error s, _) => panic! ("Encoding failed :(\n" ++ s)
-        | (.ok tsv, enc) =>
+        match EncCNF.new? <| encodePuzzle ts es with
+        | .error s =>
+          IO.println s!"Encoding board {size}/{colors}/board_{iter}.puz failed: {s}"
+          return true
+        | .ok (tsv, enc) =>
         let startTime ← IO.monoMsNow
         let timedOut ← IO.mkRef false
         let _ ← SolvePuzzle.solveAll enc tsv (termCond := some do

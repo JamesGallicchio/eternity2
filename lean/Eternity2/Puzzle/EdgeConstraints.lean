@@ -58,11 +58,17 @@ private def centerTiles :=
 end TileSetVariables
 
 def mkVars (tiles : List (Tile (Color.withBorder b c))) (size : Nat)
-  (h_ts : tiles.length = size * size)
-  (h_uniq : tiles.isDistinct)
   : EncCNF (TileSetVariables size b c) := do
+  match h_ts : decide <| tiles.length = size * size with
+  | false => throw s!"wrong number of tiles in tileset; expected {size * size} but got {tiles.length}"
+  | true =>
+  match h_uniq : decide <| _ with
+  | false => throw s!"some tiles not unique"
+  | true =>
   let pvs ← EncCNF.mkVarBlock "x" [size*size, size*size]
   let dvs ← EncCNF.mkVarBlock "y" [2 * (size * size.succ), b+c+1]
+  let h_ts    := (decide_eq_true_iff _).mp h_ts
+  let h_uniq  := (decide_eq_true_iff _).mp h_uniq
   return ⟨tiles, h_ts, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
 
 def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
@@ -353,8 +359,14 @@ def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : E
             , tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l
             ]
 
+def compactEncoding (tsv : TileSetVariables size b c) (onlyEdge : Bool := false)
+  : EncCNF Unit := do
+    pieceConstraints tsv
+    diamondConstraints tsv
+    essentialConstraints tsv onlyEdge
+
 /-- A piece can be placed in atMostOne spot -/
-def explicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
+def pieceExplicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   for (_,p) in tsv.cornerTiles do
     SquareIndex.corners size
     |>.map (tsv.piece_vars p ·.1)
@@ -368,22 +380,15 @@ def explicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
     |>.map (tsv.piece_vars p ·.1)
     |> atMostOne
 
-def puzzleConstraints (ts : TileSet size (Color.withBorder b c)) (onlyEdge : Bool := false)
-  : ExceptT String EncCNF (TileSetVariables size b c) := do
-  match h_ts : decide <| ts.tiles.length = size * size with
-  | false => throw s!"wrong number of tiles in tileset; expected {size * size} but got {ts.tiles.length}"
-  | true =>
-  match h_uniq : decide <| _ with
-  | false => throw s!"some tiles not unique"
-  | true =>
-    let tsv ← mkVars ts.tiles size
-        ((decide_eq_true_iff _).mp h_ts)
-        ((decide_eq_true_iff _).mp h_uniq)
-    pieceConstraints tsv
-    diamondConstraints tsv
-    essentialConstraints tsv onlyEdge
-    explicitConstraints tsv
-    return tsv
+def forbiddenColors (tsv : TileSetVariables size b c) : EncCNF Unit := do
+  for (t,p) in tsv.centerTiles do
+    let forbiddenColors := Color.centerColors.filter (t.colors.contains ·)
+    for (q,ds) in SquareIndex.center size do
+      /- If tile p is placed at q, then each bordering diamond cannot be
+          among the forbidden colors -/
+      for c in forbiddenColors do
+        for i in List.fins 4 do
+          EncCNF.addClause [.not (tsv.piece_vars p q), .not (tsv.diamond_vars (ds i) c)]
 
 /- Break rotational symmetry by assigning a corner to (0,0) -/
 def fixCorner (ts : TileSetVariables size b c) : EncCNF Unit := do
@@ -414,6 +419,25 @@ def fixCorners (ts : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := d
     | _ =>
       panic! s!"Tileset had {corners.length} corners"
 
+/-- Given a list of tiles, encode that for each
+border- or center-color, the `c`-colored triangles
+must be half `+` and half `-`.
+-/
+def colorCardConstraints (L : List (Tile (Color.withBorder b c))) : EncCNF (List (Tile (Color.withBorder b c) × Var)) := do
+  let varList ← L.foldrM (fun t rest => do
+    let var ← mkVar s!"tile_sign{t.up}{t.right}{t.down}{t.left}"
+    return (t,var) :: rest
+    ) []
+
+  for color in Color.borderColors ++ Color.centerColors do
+    let cVars := varList.bind (fun (t,var) =>
+      t.colors.filter (· = color) |>.map (fun _ => var))
+    let pos : Array Literal := Array.mk <| cVars.map (⟨·,false⟩)
+    assert! (pos.size % 2 = 0) -- handshake lemma :)
+    equalK pos (pos.size / 2)
+
+  return varList
+
 def associatePolarities (ts : TileSetVariables size b c)
         (signVars : List (Tile (Color.withBorder b c) × EncCNF.Var))
         (h : signVars.length = size * size) : EncCNF Unit := do
@@ -426,3 +450,31 @@ def associatePolarities (ts : TileSetVariables size b c)
       else
         -- negative location
         addClause [.not <| ts.piece_vars (h ▸ p) ⟨i,j⟩, .not <| signVars[p].2]
+
+end Constraints
+
+structure EncodingSettings where
+  useRedundant  : Bool := true
+  usePolarity   : Bool := false
+  fixCorner     : Bool := true
+  fixCorners    : Option (Fin 6) := none
+
+def encodePuzzle (ts : TileSet size (Color.withBorder b c)) (es : EncodingSettings)
+  : EncCNF (Constraints.TileSetVariables size b c)
+  := do
+  let tsv ← Constraints.mkVars ts.tiles size
+  Constraints.compactEncoding tsv
+
+  if es.useRedundant then
+    Constraints.forbiddenColors tsv
+    Constraints.pieceExplicitConstraints tsv
+
+  if es.usePolarity then
+    let pVars ← Constraints.colorCardConstraints ts.tiles
+    Constraints.associatePolarities tsv pVars sorry
+
+  match es.fixCorners with
+  | none => if es.fixCorner then Constraints.fixCorner tsv
+  | some i => Constraints.fixCorners tsv i
+
+  return tsv

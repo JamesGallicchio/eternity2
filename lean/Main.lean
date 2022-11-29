@@ -27,9 +27,9 @@ def ensureFileDNEOrAskToOverwrite (file : FilePath) : IO Unit := do
     IO.print <| s!"Path {file} already exists. Overwrite it? (y/n) "
     let mut resp := none
     while resp.isNone do
-      match ← (← IO.getStdin).getLine with
-      | "y\n" => resp := some true
-      | "n\n" => resp := some false
+      match (← (← IO.getStdin).getLine).trim with
+      | "y" => resp := some true
+      | "n" => resp := some false
       | _ => IO.print "Please respond \"y\" or \"n\": "
     match resp with
     | none => panic! "unreachable 98651320"
@@ -73,7 +73,8 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
   let logfile : FilePath :=
     p.flag? "logfile" |>.map (·.as! String)
       |>.getD s!"{output}.log"
-
+  let useRedundant := p.flag! "use-redundant" |>.as! Bool
+  let usePolarity := p.flag! "use-polarity" |>.as! Bool
 
   ensureDirectoryExists output
   
@@ -86,7 +87,10 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
   IO.FS.withFile logfile .append (fun handle =>
     TaskIO.wait <|
       Log.run handle <|
-        outputAllSols tileset.toString tiles output (parallelize := true)
+        outputAllSols
+          tileset.toString tiles output
+          { useRedundant, usePolarity}
+          (parallelize := true)
   )
 
   return 0
@@ -99,6 +103,11 @@ def solveTileSetCmd := `[Cli|
     tileset : String; "File containing the tileset to solve"
     output : String; "Directory to output solutions"
     logfile : String; "File for detailed logs"
+    "use-redundant" : Bool; "Use redundant clauses (forbidden color & explicit piece locations)"
+    "use-polarity" : Bool; "Use sign polarity constraints"
+  
+  EXTENSIONS:
+    defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
 ]
 
 def runGenBoardSuiteCmd (p : Parsed) : IO UInt32 := do
@@ -131,7 +140,11 @@ def genBoardSuiteCmd := `[Cli|
 def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
   let suite : FilePath := p.flag! "boardsuite" |>.as! String
   let timeout : Nat := p.flag! "timeout" |>.as! Nat
-  testSolveTimes suite timeout
+  testSolveTimes suite timeout {
+    useRedundant := true
+    usePolarity := true
+    fixCorner := true
+  }
   return 0
 
 def testSolveTimesCmd := `[Cli|
