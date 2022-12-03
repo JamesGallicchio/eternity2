@@ -16,6 +16,17 @@ def Fin.last (n : Nat) (_ : 0 < n) : Fin n :=
   | 0 => by contradiction
   | n+1 => ⟨n, Nat.le_refl _⟩
 
+def Fin.pred? : Fin n → Option (Fin n)
+| ⟨0, _⟩ => none
+| ⟨i+1,h⟩ => some ⟨i, Nat.le_of_succ_le h⟩
+
+def Fin.succ? : {n : Nat} → Fin n → Option (Fin n)
+| 0, i => i.elim0
+| n+1, ⟨i,_⟩ =>
+  if h : i < n
+  then some ⟨i+1, Nat.succ_le_succ h⟩
+  else none
+
 def Function.iterate (f : α → α) : Nat → (α → α)
 | 0 => id
 | n+1 => iterate f n ∘ f
