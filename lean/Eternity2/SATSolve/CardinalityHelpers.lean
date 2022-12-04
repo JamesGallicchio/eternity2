@@ -2,8 +2,49 @@ import Eternity2.SATSolve.EncCNF
 
 namespace EncCNF
 
+def condAmoPairwise (cond lits : List Literal) : EncCNF Unit := do
+  match lits with
+  | []    => return
+  | x::xs =>
+    for y in xs do
+      EncCNF.addClause (cond.map (·.not) ++ [x.not, y.not])
+    condAmoPairwise cond xs
+
+def amoPairwise := condAmoPairwise []
+
+def condAmoCut4 (cond lits : List Literal) : EncCNF Unit := do
+  match lits with
+  | []                      => return
+  | l1 :: []                => condAmoPairwise cond [l1]
+  | l1 :: l2 :: []          => condAmoPairwise cond [l1, l2]
+  | l1 :: l2 :: l3 :: rlits =>
+    let t ← mkTemp
+    condAmoPairwise cond [⟨t, false⟩, l1, l2, l3]
+    -- atMostOneList (rlits.append [⟨t, false⟩])
+    condAmoCut4 cond (⟨t, true⟩ :: rlits)
+termination_by _ lits => lits.length
+
+def amoCut4 := condAmoCut4 []
+
+def condAtMostOne (cond lits : List Literal) : EncCNF Unit :=
+  if lits.length ≤ 5 then
+    condAmoPairwise cond lits
+  else
+    condAmoCut4 cond lits
+
+def atMostOne := condAtMostOne []
+
 def condAtMostK (cond : List Literal) (lits : Array Literal) (k : Nat) : EncCNF Unit := do
   let negCond := cond.map (·.not)
+
+  if k = 0 then
+    /- All lits must be false -/
+    for l in lits do
+      EncCNF.addClause (negCond ++ [l.not])
+    return
+  if k = 1 then
+    condAtMostOne cond lits.toList
+    return
 
   -- if `i` < `∑ j' ≤ j, lits[j']` then `temps[i][j]`
   let temps ← mkTempBlock [k+1, lits.size]
@@ -45,6 +86,8 @@ def condAtLeastK (cond : List Literal) (lits : Array Literal) (k : Nat) : EncCNF
 
   match k with
   | 0 => return -- Always trivially true
+  | 1 => /- Equivalent to just a clause containing the literals -/
+    EncCNF.addClause (negCond ++ lits.toList)
   | k+1 =>
   -- if `temps[i][j]` then `i` < `∑ j' ≤ j, lits[j']`
   let temps ← mkTempBlock [k+1, lits.size]
@@ -84,39 +127,13 @@ def condAtLeastK (cond : List Literal) (lits : Array Literal) (k : Nat) : EncCNF
 def atLeastK := condAtLeastK []
 
 def condEqualK (cond : List Literal) (lits : Array Literal) (k : Nat) : EncCNF Unit := do
-  condAtMostK cond lits k
-  condAtLeastK cond lits k
+  if lits.size < k then
+    EncCNF.addClause []
+  else if lits.size - k < k then
+    condAtMostK   cond (lits.map (·.not)) (lits.size - k)
+    condAtLeastK  cond (lits.map (·.not)) (lits.size - k)
+  else
+    condAtMostK cond lits k
+    condAtLeastK cond lits k
 
 def equalK := condEqualK []
-
-def condAmoPairwise (cond lits : List Literal) : EncCNF Unit := do
-  match lits with
-  | []    => return
-  | x::xs =>
-    for y in xs do
-      EncCNF.addClause (cond.map (·.not) ++ [x.not, y.not])
-    condAmoPairwise cond xs
-
-def amoPairwise := condAmoPairwise []
-
-def condAmoCut4 (cond lits : List Literal) : EncCNF Unit := do
-  match lits with
-  | []                      => return
-  | l1 :: []                => condAmoPairwise cond [l1]
-  | l1 :: l2 :: []          => condAmoPairwise cond [l1, l2]
-  | l1 :: l2 :: l3 :: rlits =>
-    let t ← mkTemp
-    condAmoPairwise cond [⟨t, false⟩, l1, l2, l3]
-    -- atMostOneList (rlits.append [⟨t, false⟩])
-    condAmoCut4 cond (⟨t, true⟩ :: rlits)
-termination_by _ lits => lits.length
-
-def amoCut4 := condAmoCut4 []
-
-def condAtMostOne (cond lits : List Literal) : EncCNF Unit :=
-  if lits.length ≤ 5 then
-    condAmoPairwise cond lits
-  else
-    condAmoCut4 cond lits
-
-def atMostOne := condAtMostOne []

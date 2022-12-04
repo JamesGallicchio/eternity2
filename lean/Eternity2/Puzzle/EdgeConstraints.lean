@@ -13,6 +13,7 @@ structure TileSetVariables (size b c : Nat) where
   h_ts_uniq : tiles.isDistinct
   piece_vars : Fin (size * size) → SquareIndex size → Var
   diamond_vars : DiamondIndex size → Fin (b+c+1) → Var
+  sign_vars : Fin (size * size) → Var
 
 namespace TileSetVariables
 
@@ -28,6 +29,8 @@ def diamondVarList :=
   DiamondIndex.all _ |>.bind fun d =>
   List.fins _ |>.map fun i =>
   tsv.diamond_vars d i
+
+def signVarList := List.fins _ |>.map (tsv.sign_vars)
 
 def borderDiamondVarList :=
   DiamondIndex.border _ |>.bind fun d =>
@@ -65,11 +68,12 @@ def mkVars (tiles : List (Tile (Color.withBorder b c))) (size : Nat)
   match h_uniq : decide <| _ with
   | false => throw s!"some tiles not unique"
   | true =>
-  let pvs ← EncCNF.mkVarBlock "x" [size*size, size*size]
-  let dvs ← EncCNF.mkVarBlock "y" [2 * (size * size.succ), b+c+1]
   let h_ts    := (decide_eq_true_iff _).mp h_ts
   let h_uniq  := (decide_eq_true_iff _).mp h_uniq
-  return ⟨tiles, h_ts, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·])⟩
+  let pvs ← EncCNF.mkVarBlock "x" [size*size, size*size]
+  let dvs ← EncCNF.mkVarBlock "y" [2 * (size * size.succ), b+c+1]
+  let svs ← EncCNF.mkVarBlock "z" [size*size]
+  return ⟨tiles, h_ts, h_uniq, (pvs[·][·.toFin]), (dvs[·.toFin][·]), (svs[·])⟩
 
 def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
 
@@ -423,33 +427,75 @@ def fixCorners (ts : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := d
 border- or center-color, the `c`-colored triangles
 must be half `+` and half `-`.
 -/
-def colorCardConstraints (L : List (Tile (Color.withBorder b c))) : EncCNF (List (Tile (Color.withBorder b c) × Var)) := do
-  let varList ← L.foldrM (fun t rest => do
-    let var ← mkVar s!"tile_sign{t.up}{t.right}{t.down}{t.left}"
-    return (t,var) :: rest
-    ) []
-
+def colorCardConstraints (tsv : TileSetVariables size b c)
+  : EncCNF Unit := do
   for color in Color.borderColors ++ Color.centerColors do
-    let cVars := varList.bind (fun (t,var) =>
-      t.colors.filter (· = color) |>.map (fun _ => var))
+    let cVars :=
+      List.fins (size*size) |>.bind (fun idx =>
+        let t := tsv.tiles[tsv.h_ts.symm ▸ idx]
+        let var := tsv.sign_vars idx
+        t.colors.filter (· = color) |>.map (fun _ => var))
     let pos : Array Literal := Array.mk <| cVars.map (⟨·,false⟩)
     assert! (pos.size % 2 = 0) -- handshake lemma :)
     equalK pos (pos.size / 2)
 
-  return varList
+def signCardConstraints (tsv : TileSetVariables size b c)
+  : EncCNF Unit := do
+  if size % 2 == 0 then
+    /- Half the corners should be pos -/
+    let corner_vars := List.fins (size*size)
+      |>.filter (fun idx => tsv.tiles[tsv.h_ts.symm ▸ idx].isCorner)
+      |>.map (fun idx => (tsv.sign_vars idx : Literal))
+      |> Array.mk
+    assert! corner_vars.size == 4
+    equalK corner_vars 2
+    /- Half the side pieces should be pos -/
+    let side_vars := List.fins (size*size)
+      |>.filter (fun idx => tsv.tiles[tsv.h_ts.symm ▸ idx].isSide)
+      |>.map (fun idx => (tsv.sign_vars idx : Literal))
+      |> Array.mk
+    assert! side_vars.size == 4*(size-2)
+    equalK side_vars (2*(size-2))
+    /- Half the center pieces should be pos -/
+    let center_vars := List.fins (size*size)
+      |>.filter (fun idx => tsv.tiles[tsv.h_ts.symm ▸ idx].isCenter)
+      |>.map (fun idx => (tsv.sign_vars idx : Literal))
+      |> Array.mk
+    assert! center_vars.size == (size-2)*(size-2)
+    equalK side_vars ((size-2) * (size-2) / 2)
+  else
+    /- All the corners should be pos -/
+    let corner_vars := List.fins (size*size)
+      |>.filter (fun idx => tsv.tiles[tsv.h_ts.symm ▸ idx].isCorner)
+      |>.map (fun idx => (tsv.sign_vars idx : Literal))
+      |> Array.mk
+    assert! corner_vars.size == 4
+    equalK corner_vars 4
+    /- Half - 2 of the side pieces should be pos -/
+    let side_vars := List.fins (size*size)
+      |>.filter (fun idx => tsv.tiles[tsv.h_ts.symm ▸ idx].isSide)
+      |>.map (fun idx => (tsv.sign_vars idx : Literal))
+      |> Array.mk
+    assert! side_vars.size == 4*(size-2)
+    equalK side_vars (2*(size-3))
+    /- Half (round up) the center pieces should be pos -/
+    let center_vars := List.fins (size*size)
+      |>.filter (fun idx => tsv.tiles[tsv.h_ts.symm ▸ idx].isCenter)
+      |>.map (fun idx => (tsv.sign_vars idx : Literal))
+      |> Array.mk
+    assert! center_vars.size == (size-2)*(size-2)
+    equalK center_vars (((size-2) * (size-2) + 1) / 2)
 
-def associatePolarities (ts : TileSetVariables size b c)
-        (signVars : List (Tile (Color.withBorder b c) × EncCNF.Var))
-        (h : signVars.length = size * size) : EncCNF Unit := do
+def associatePolarities (ts : TileSetVariables size b c) : EncCNF Unit := do
   -- For each piece & location, positive location -> positive piece, negative location -> negative piece
   for p in List.fins _ do
     for ⟨i,j⟩ in SquareIndex.all size do
       if (i.val + j) % 2 = 0 then
         -- positive location
-        addClause [.not <| ts.piece_vars (h ▸ p) ⟨i,j⟩, signVars[p].2]
+        addClause [.not <| ts.piece_vars p ⟨i,j⟩, ts.sign_vars p]
       else
         -- negative location
-        addClause [.not <| ts.piece_vars (h ▸ p) ⟨i,j⟩, .not <| signVars[p].2]
+        addClause [.not <| ts.piece_vars p ⟨i,j⟩, .not <| ts.sign_vars p]
 
 end Constraints
 
@@ -470,8 +516,8 @@ def encodePuzzle (ts : TileSet size (Color.withBorder b c)) (es : EncodingSettin
     Constraints.pieceExplicitConstraints tsv
 
   if es.usePolarity then
-    let pVars ← Constraints.colorCardConstraints ts.tiles
-    Constraints.associatePolarities tsv pVars sorry
+    Constraints.colorCardConstraints tsv
+    Constraints.associatePolarities tsv
 
   match es.fixCorners with
   | none => if es.fixCorner then Constraints.fixCorner tsv

@@ -103,7 +103,7 @@ def all (size : Nat) : List (SquareIndex size) :=
       ⟨i,j⟩
 
 instance : ToString (SquareIndex size) where
-  toString  | ⟨i, j⟩ => s!"horz {i} {j}"
+  toString | ⟨i, j⟩ => s!"r{i}c{j}"
 
 end SquareIndex
 

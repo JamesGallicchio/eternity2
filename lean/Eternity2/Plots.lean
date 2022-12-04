@@ -88,14 +88,18 @@ def plotSolCounts (name : String)
 
 def plotSignSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "sign" size fun ts => do
-    let tile_vars ← Constraints.colorCardConstraints ts.tiles
-    return tile_vars.map (·.2)
+    let tsv ← Constraints.mkVars ts.tiles size
+    Constraints.colorCardConstraints tsv
+    return tsv.signVarList
 
 def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "edgesign" size fun ts => do
-    let tile_vars ← Constraints.colorCardConstraints ts.tiles
-    return tile_vars.filterMap (fun (t, v) =>
-      if !t.isCenter then some v else none)
+    let tsv ← Constraints.mkVars ts.tiles size
+    Constraints.colorCardConstraints tsv
+    return List.fins _ |>.filterMap (fun i =>
+      if !tsv.tiles[tsv.h_ts.symm ▸ i].isCenter
+      then some (tsv.sign_vars i)
+      else none)
 
 def plotPuzzleSolCounts (size : Nat) : IO Unit := do
   plotSolCounts "puzzle" size fun ts => do
@@ -117,8 +121,9 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
       -- Count solutions to just polarity constraints
       let signsols ← (do
         let (blocking_vars, state) := EncCNF.new! do
-          let tile_vars ← Constraints.colorCardConstraints ts.tiles
-          return tile_vars.map (·.2)
+          let tsv ← Constraints.mkVars ts.tiles size
+          Constraints.colorCardConstraints tsv
+          return tsv.signVarList
 
         let count ← IO.mkRef 0
 
@@ -148,8 +153,8 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
           let tsv ← Constraints.mkVars ts.tiles size
           Constraints.compactEncoding tsv
           Constraints.fixCorner tsv
-          let vList ← Constraints.colorCardConstraints tsv.tiles
-          Constraints.associatePolarities tsv vList sorry
+          Constraints.colorCardConstraints tsv
+          Constraints.associatePolarities tsv
           return tsv.diamondVarList
 
         let count ← IO.mkRef 0
@@ -172,8 +177,8 @@ def findEternityEdgeSols : IO Unit := do
     let tsv ← Constraints.mkVars e2.tiles 16
     Constraints.compactEncoding tsv (onlyEdge := true)
     Constraints.fixCorner tsv
-    let vList ← Constraints.colorCardConstraints tsv.tiles
-    Constraints.associatePolarities tsv vList sorry
+    Constraints.colorCardConstraints tsv
+    Constraints.associatePolarities tsv
     return tsv
   with
   | .error s =>
@@ -305,13 +310,18 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
         colors := colors - 1
 
 def findCorrs (ts : TileBoard size (Color.withBorder b c)) : IO Unit := do
-  let (vars, enc) := EncCNF.new! do
-    let vars ← Constraints.colorCardConstraints ts.tiles
-    EncCNF.addClause [vars[0]!.2]
-    return vars
+  match EncCNF.new? do
+    let tsv ← Constraints.mkVars ts.tiles size
+    Constraints.colorCardConstraints tsv
+    Constraints.signCardConstraints tsv
+    if h:0 < size*size then EncCNF.addClause [tsv.sign_vars ⟨0,h⟩]
+    return tsv
+  with
+  | .error s => panic! s!"failed to encode: {s}"
+  | .ok (tsv, enc) =>
   let signsols ← (do
     let mut signsols ← IO.mkRef []
-    let () ← SATSolve.allSols enc (vars.map (·.2)) (perItem := fun assn => do
+    let () ← SATSolve.allSols enc tsv.signVarList (perItem := fun assn => do
       signsols.modify (assn :: ·))
     signsols.get)
   let corrs :=
@@ -325,24 +335,62 @@ def findCorrs (ts : TileBoard size (Color.withBorder b c)) : IO Unit := do
     else [
       let sameCount :=
         signsols.countp (fun assn =>
-          assn.find? (vars[idx1]!.2) == assn.find? (vars[idx2]!.2))
+          assn.find? (tsv.sign_vars idx1) == assn.find? (tsv.sign_vars idx2))
       let diffCount :=
         signsols.countp (fun assn =>
-          assn.find? (vars[idx1]!.2) != assn.find? (vars[idx2]!.2))
+          assn.find? (tsv.sign_vars idx1) != assn.find? (tsv.sign_vars idx2))
       ((i1,j1), (i2,j2), sameCount, diffCount)
     ]
   let sorted := corrs.toArray.insertionSort
-                  fun (_,_,s1,d1) (_,_,s2,d2) => min s1 d1 > min s2 d2
+      fun (_,_,s1,d1) (_,_,s2,d2) => min s1 d1 < min s2 d2
+
+  let boardSols ← (do
+    let mut boardSols ← IO.mkRef []
+    match EncCNF.new? <| encodePuzzle ts.tileSet {} with
+    | .error s =>
+      IO.println s!"aborting, failed to encode tileset. error:\n{s}"
+    | .ok (tsv, enc) =>
+      SATSolve.allSols enc
+        (tsv.pieceVarList ++ tsv.diamondVarList)
+        tsv.diamondVarList
+        (perItem := fun assn => do
+          let poses : Fin size → Fin size → SquareIndex size := fun i j =>
+              let idx1 := SquareIndex.toFin ⟨i,j⟩
+              match
+                List.find?
+                  (assn.find! <| tsv.piece_vars idx1 ·)
+                  (SquareIndex.all size)
+              with
+              | some x => x
+              | none =>
+                letI : Inhabited (SquareIndex size) := (match size, i with | 0, i => i.elim0 | _+1, _ => ⟨⟨0,0⟩⟩)
+                panic! "piece not placed?"
+          boardSols.modify (poses :: ·)
+        )
+    return ←boardSols.get)
+
+  IO.println ts
+  IO.println ""
+
+  for sol in boardSols do
+    for i in List.fins _ do
+      for j in List.fins _ do
+        IO.print (sol i j)
+        IO.print " "
+      IO.println ""
+    IO.println ""
+
   for (p1,p2, same,diff) in sorted do
     let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
-    IO.println s!"{p1} {p2}: {same}, {diff} ({pct*100}%)"
+    let actSame :=
+      boardSols.countp (fun placement =>
+          let q1 := placement p1.1 p1.2
+          let q2 := placement p2.1 p2.2
+          (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 0)
+    let actDiff :=
+      boardSols.countp (fun placement =>
+          let q1 := placement p1.1 p1.2
+          let q2 := placement p2.1 p2.2
+          (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 1)
 
-
-/- #eval do
-  let size := 6
-  let coreColors := size+1
-  let edgeColors := Nat.sqrt size + 1
-  let dboard ← GenBoard.generate size coreColors edgeColors
-  let board := dboard.tileBoard
-  findCorrs board
--/
+    IO.println s!"{p1} {p2}: {same}, {diff} ({pct*100}%); actual {actSame}, {actDiff}"
