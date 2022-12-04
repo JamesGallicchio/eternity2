@@ -303,3 +303,46 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
         decreasing := false
       else
         colors := colors - 1
+
+def findCorrs (ts : TileBoard size (Color.withBorder b c)) : IO Unit := do
+  let (vars, enc) := EncCNF.new! do
+    let vars ← Constraints.colorCardConstraints ts.tiles
+    EncCNF.addClause [vars[0]!.2]
+    return vars
+  let signsols ← (do
+    let mut signsols ← IO.mkRef []
+    let () ← SATSolve.allSols enc (vars.map (·.2)) (perItem := fun assn => do
+      signsols.modify (assn :: ·))
+    signsols.get)
+  let corrs :=
+    List.fins size |>.bind fun i1 =>
+    List.fins size |>.bind fun j1 =>
+    List.fins size |>.bind fun i2 =>
+    List.fins size |>.bind fun j2 =>
+    let idx1 := SquareIndex.toFin ⟨i1,j1⟩
+    let idx2 := SquareIndex.toFin ⟨i2,j2⟩
+    if idx1 ≥ idx2 then []
+    else [
+      let sameCount :=
+        signsols.countp (fun assn =>
+          assn.find? (vars[idx1]!.2) == assn.find? (vars[idx2]!.2))
+      let diffCount :=
+        signsols.countp (fun assn =>
+          assn.find? (vars[idx1]!.2) != assn.find? (vars[idx2]!.2))
+      ((i1,j1), (i2,j2), sameCount, diffCount)
+    ]
+  let sorted := corrs.toArray.insertionSort
+                  fun (_,_,s1,d1) (_,_,s2,d2) => min s1 d1 > min s2 d2
+  for (p1,p2, same,diff) in sorted do
+    let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
+    IO.println s!"{p1} {p2}: {same}, {diff} ({pct*100}%)"
+
+
+/- #eval do
+  let size := 6
+  let coreColors := size+1
+  let edgeColors := Nat.sqrt size + 1
+  let dboard ← GenBoard.generate size coreColors edgeColors
+  let board := dboard.tileBoard
+  findCorrs board
+-/
