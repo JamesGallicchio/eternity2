@@ -35,6 +35,7 @@ elab "#get_libstdcpp" : command =>
 #get_libstdcpp -- now available as `libstdcpp` declaration
 
 package eternity2 {
+  precompileModules := true
   moreLeancArgs := #[ "--verbose" ]
   moreLinkArgs := #[
     "-L" ++ (cadicalDir / "build").toString,
