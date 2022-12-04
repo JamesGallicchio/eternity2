@@ -164,6 +164,29 @@ def testSolveTimesCmd := `[Cli|
     defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
 ]
 
+def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
+  let size : Nat := p.flag! "size" |>.as! Nat
+  let iters : Nat := p.flag! "iters" |>.as! Nat
+  let timeout : Nat := p.flag! "timeout" |>.as! Nat
+
+  let coreColors := size+1
+  let edgeColors := Nat.sqrt size + 1
+  let dboard ← GenBoard.generate size coreColors edgeColors
+  let board := dboard.tileBoard
+
+  findCorrs board (iters := iters) (timeout := timeout)
+  return 0
+
+def findSignCorrsCmd := `[Cli|
+  "find-sign-corrs" VIA runFindSignCorrsCmd; ["0.0.1"]
+  "Generate random board and find correlations between sign solutions on that board."
+
+  FLAGS:
+    size : Nat; "How big of a board to generate"
+    iters : Nat; "Number of CNF scrambles to find solutions for"
+    timeout : Nat; "Timeout (in ms) for each CNF scramble"
+]
+
 def mainCmd := `[Cli|
   eternity2 NOOP; ["0.0.1"]
   "Tools working towards a solution to Eternity II"
@@ -172,7 +195,8 @@ def mainCmd := `[Cli|
     genTileSetCmd;
     genBoardSuiteCmd;
     solveTileSetCmd;
-    testSolveTimesCmd
+    testSolveTimesCmd;
+    findSignCorrsCmd
 ]
 
 def main (args : List String) : IO UInt32 := do
