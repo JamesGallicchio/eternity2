@@ -5,7 +5,7 @@ namespace Eternity2
 structure SquareIndex (size : Nat) where
   row : Fin size
   col : Fin size
-deriving Repr
+deriving Repr, DecidableEq
 
 inductive DiamondIndex (size : Nat) where
 /-- col refers to the right triangle's column -/

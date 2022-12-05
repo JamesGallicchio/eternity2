@@ -309,7 +309,30 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
       else
         colors := colors - 1
 
-def findCorrs (ts : TileBoard size (Color.withBorder b c)) : IO Unit := do
+def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c) : IO (List (SquareIndex size × SquareIndex size × Nat × Nat)) := do
+  let signsols ← (do
+    let mut signsols ← IO.mkRef []
+    let () ← SATSolve.allSols enc tsv.signVarList (perItem := fun assn => do
+      signsols.modify (assn :: ·))
+    signsols.get)
+  let corrs :=
+    SquareIndex.all size |>.bind fun p1 =>
+    SquareIndex.all size |>.bind fun p2 =>
+    let idx1 := SquareIndex.toFin p1
+    let idx2 := SquareIndex.toFin p2
+    if idx1 ≥ idx2 then []
+    else [
+      let sameCount :=
+        signsols.countp (fun assn =>
+          assn.find? (tsv.sign_vars idx1) == assn.find? (tsv.sign_vars idx2))
+      let diffCount :=
+        signsols.countp (fun assn =>
+          assn.find? (tsv.sign_vars idx1) != assn.find? (tsv.sign_vars idx2))
+      (p1, p2, sameCount, diffCount)
+    ]
+  return corrs
+
+partial def findCorrs (ts : TileBoard size (Color.withBorder b c)) (iters timeout : Nat) : IO Unit := do
   match EncCNF.new? do
     let tsv ← Constraints.mkVars ts.tiles size
     Constraints.colorCardConstraints tsv
@@ -319,31 +342,7 @@ def findCorrs (ts : TileBoard size (Color.withBorder b c)) : IO Unit := do
   with
   | .error s => panic! s!"failed to encode: {s}"
   | .ok (tsv, enc) =>
-  let signsols ← (do
-    let mut signsols ← IO.mkRef []
-    let () ← SATSolve.allSols enc tsv.signVarList (perItem := fun assn => do
-      signsols.modify (assn :: ·))
-    signsols.get)
-  let corrs :=
-    List.fins size |>.bind fun i1 =>
-    List.fins size |>.bind fun j1 =>
-    List.fins size |>.bind fun i2 =>
-    List.fins size |>.bind fun j2 =>
-    let idx1 := SquareIndex.toFin ⟨i1,j1⟩
-    let idx2 := SquareIndex.toFin ⟨i2,j2⟩
-    if idx1 ≥ idx2 then []
-    else [
-      let sameCount :=
-        signsols.countp (fun assn =>
-          assn.find? (tsv.sign_vars idx1) == assn.find? (tsv.sign_vars idx2))
-      let diffCount :=
-        signsols.countp (fun assn =>
-          assn.find? (tsv.sign_vars idx1) != assn.find? (tsv.sign_vars idx2))
-      ((i1,j1), (i2,j2), sameCount, diffCount)
-    ]
-  let sorted := corrs.toArray.insertionSort
-      fun (_,_,s1,d1) (_,_,s2,d2) => min s1 d1 < min s2 d2
-
+  let mut enc := enc
   let boardSols ← (do
     let mut boardSols ← IO.mkRef []
     match EncCNF.new? <| encodePuzzle ts.tileSet {} with
@@ -380,17 +379,46 @@ def findCorrs (ts : TileBoard size (Color.withBorder b c)) : IO Unit := do
       IO.println ""
     IO.println ""
 
-  for (p1,p2, same,diff) in sorted do
-    let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
-    let actSame :=
-      boardSols.countp (fun placement =>
-          let q1 := placement p1.1 p1.2
-          let q2 := placement p2.1 p2.2
-          (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 0)
-    let actDiff :=
-      boardSols.countp (fun placement =>
-          let q1 := placement p1.1 p1.2
-          let q2 := placement p2.1 p2.2
-          (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 1)
+  let mut assigned := []
+  while true do
+    let corrs ← getCorrs enc tsv
+    let guess := corrs.foldl (fun acc (p1,p2,s,d) =>
+      match acc with
+      | none =>
+        if !assigned.contains (p1,p2)
+        then some (p1,p2,s,d)
+        else none
+      | some (_,_,ms,md) =>
+        if !assigned.contains (p1,p2) && min s d < min ms md
+        then some (p1,p2,s,d)
+        else acc
+    ) none
+    match guess with
+    | none =>
+      break
+    | some (p1,p2, same,diff) =>
+      let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
+      let actSame :=
+        boardSols.countp (fun placement =>
+            let q1 := placement p1.1 p1.2
+            let q2 := placement p2.1 p2.2
+            (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 0)
+      let actDiff :=
+        boardSols.countp (fun placement =>
+            let q1 := placement p1.1 p1.2
+            let q2 := placement p2.1 p2.2
+            (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 1)
 
-    IO.println s!"{p1} {p2}: {same}, {diff} ({pct*100}%); actual {actSame}, {actDiff}"
+      let (p1v, p2v) := (tsv.sign_vars p1.toFin, tsv.sign_vars p2.toFin)
+      IO.println s!"({assigned.length})\t{p1} {p2}: {same}, {diff} ({pct*100}%); actual {actSame}, {actDiff}"
+      if same > diff then
+        IO.println s!"\tAssigning {p1}, {p2} to be the same.\t(matches {actSame} sols)"
+        enc := (·.2) <| EncCNF.run! enc do
+          EncCNF.addClause [.not p1v, p2v]
+          EncCNF.addClause [p1v, .not p2v]
+      else
+        IO.println s!"\tAssigning {p1}, {p2} to be different.\t(matches {actDiff} sols)"
+        enc := (·.2) <| EncCNF.run! enc do
+          EncCNF.addClause [p1v, p2v]
+          EncCNF.addClause [.not p1v, .not p2v]
+      assigned := (p1, p2) :: assigned
