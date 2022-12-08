@@ -111,6 +111,10 @@ def fromFileDIMACS (cnfFile : String) : IO EncCNF.State := do
   let contents ← IO.FS.withFile cnfFile .read (·.readToEnd)
   return ← IO.ofExcept <| fromDIMACS contents
 
+def scramble (s : State) : IO State := do
+  return { s with
+    clauses := ← (← s.clauses.mapM (IO.randPerm)) |> IO.randPerm }
+
 end State
 
 end EncCNF

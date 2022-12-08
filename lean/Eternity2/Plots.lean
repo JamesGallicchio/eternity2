@@ -309,12 +309,27 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
       else
         colors := colors - 1
 
-def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c) : IO (List (SquareIndex size × SquareIndex size × Nat × Nat)) := do
+def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c) (iters timeout : Nat) : IO (List (SquareIndex size × SquareIndex size × Nat × Nat)) := do
   let signsols ← (do
     let mut signsols ← IO.mkRef []
-    let () ← SATSolve.allSols enc tsv.signVarList (perItem := fun assn => do
-      signsols.modify (assn :: ·))
+    for i in [0:iters] do
+      let enc ← enc.scramble
+      let start ← IO.monoMsNow
+      let count ← IO.mkRef 0
+      let () ← SATSolve.allSols enc tsv.signVarList
+        (termCond := some (do
+          let now := (← IO.monoMsNow)
+          let doTimeout := (start + timeout) < now
+          if doTimeout then
+            IO.println s!"timing out iteration {i} after finding {←count.get} sols"
+            (←IO.getStdout).flush
+          return doTimeout
+          ))
+        (perItem := fun assn => do
+          count.modify (· + 1)
+          signsols.modify (assn :: ·))
     signsols.get)
+
   let corrs :=
     SquareIndex.all size |>.bind fun p1 =>
     SquareIndex.all size |>.bind fun p2 =>
@@ -381,7 +396,7 @@ partial def findCorrs (ts : TileBoard size (Color.withBorder b c)) (iters timeou
 
   let mut assigned := []
   while true do
-    let corrs ← getCorrs enc tsv
+    let corrs ← getCorrs enc tsv iters timeout
     let guess := corrs.foldl (fun acc (p1,p2,s,d) =>
       match acc with
       | none =>
