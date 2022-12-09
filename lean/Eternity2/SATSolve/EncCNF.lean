@@ -17,8 +17,8 @@ deriving Inhabited, DecidableEq, Hashable, Repr
 instance : ToString Literal where
   toString | ⟨v,n⟩ => s!"{if n then "¬" else ""}{v}"
 
-instance : Coe Var Literal where
-  coe v := ⟨v,false⟩
+def Literal.ofVar : Var → Literal := (⟨·,false⟩)
+instance : Coe Var Literal := ⟨.ofVar⟩
 
 nonrec def Literal.not : Literal → Literal
 | ⟨v,n⟩ => ⟨v, not n⟩
