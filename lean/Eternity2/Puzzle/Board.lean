@@ -388,7 +388,7 @@ instance [ToString c] : ToString (TileBoard size c) where
     |> String.intercalate "\n"
 
 def tiles (tb : TileBoard size c) : List (Tile c) :=
-  tb.board.foldr (·.toList ++ ·) []
+  tb.board.flatten.toList
 
 def mapColors (f : c → c') : TileBoard size c → TileBoard size c'
 | ⟨b, h⟩ => ⟨b.map (·.map (Tile.map f)), by simp [h]⟩
