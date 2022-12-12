@@ -8,7 +8,8 @@ def genTileSet (size coreColors edgeColors : Nat)
   : IO (TileSet size (Color.withBorder edgeColors coreColors)) := do
   let b ← GenBoard.generate size coreColors edgeColors
   let t := DiamondBoard.tileBoard b
-  return ← t.tileSet.scramble
+  let ⟨ts,_⟩ ← t.toBoardSol.2.scramble
+  return ts
 
 def fetchEternity2Tiles : IO (TileSet 16 (Color.withBorder 5 17)) := do
   let ts ← TileSet.fromFile "../puzzles/e2pieces.txt"
@@ -265,12 +266,16 @@ def genAndSolveBoards (outputDir : FilePath)
 
 
 def genBoardSuite (output : FilePath) : IO Unit := do
-  TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
+  for size in [4:17] do
     IO.FS.createDir (output / s!"{size}")
     for colors in [size+1:101] do
       IO.FS.createDir (output / s!"{size}" / s!"{colors}")
       for iter in [0:10] do
-        let ts ← genTileSet size colors (Nat.sqrt size + 1)
+        let b ← GenBoard.generate size colors (Nat.sqrt size + 1)
+        let t := DiamondBoard.tileBoard b
+        let ⟨ts,b⟩ ← t.toBoardSol.2.scramble
+        IO.FS.createDir (output / s!"{size}" / s!"{colors}" / s!"board_{iter}")
+        b.writeSolution (output / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
         ts.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
 
 

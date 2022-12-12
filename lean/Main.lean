@@ -115,6 +115,7 @@ def runGenBoardSuiteCmd (p : Parsed) : IO UInt32 := do
   let seed : Option Nat := p.flag? "seed" |>.map (·.as! Nat)
 
   for seed in seed do
+    IO.println s!"Using seed {seed}"
     IO.setRandSeed seed
 
   if ←output.pathExists then
@@ -174,7 +175,7 @@ def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
   let dboard ← GenBoard.generate size coreColors edgeColors
   let board := dboard.tileBoard
 
-  findCorrs board.tileSet (iters := iters) (timeout := timeout)
+  findCorrs board.toBoardSol.fst (iters := iters) (timeout := timeout)
   return 0
 
 def findSignCorrsCmd := `[Cli|
