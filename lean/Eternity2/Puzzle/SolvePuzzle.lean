@@ -6,6 +6,10 @@ namespace Eternity2.SolvePuzzle
 
 open Constraints EncCNF
 
+structure BoardSol [BEq c] (ts : TileSet size c) where
+  /-- For each tile in tileset, its index + rotation (0 = up) -/
+  pieceIdx : Fin (size * size) → SquareIndex size × Fin 4
+
 def decodeDiamonds (tsv : Constraints.TileSetVariables size b c)
               (s : Std.HashMap EncCNF.Var Bool) :=
   let tb : DiamondBoard size (Option (Color.withBorder b c)) := {
@@ -21,71 +25,87 @@ def decodeDiamonds (tsv : Constraints.TileSetVariables size b c)
 def decodePieces
       (tsv : Constraints.TileSetVariables size b c)
       (s : Std.HashMap EncCNF.Var Bool)
-    : Except String (TileBoard size (Color.withBorder b c)) := do
-  let board ←
-    Array.initM _ (fun i => do
-      return ← Array.initM _ (fun j => do
-        match
-          List.fins _
-            |>.find? (fun p => s.find? (tsv.piece_vars p ⟨i,j⟩ ) |>.get!)
-            |>.map (fun p => tsv.tiles[tsv.h_ts.symm ▸ p]!)
-        with
-        | some t => return t
-        | none => throw "Incomplete tile assignment"
-      )
+    : Except String (BoardSol tsv.ts) := do
+  let board ←  decodeDiamonds tsv s |>.expectFull
+  let sol ←
+    Array.initM _ (fun p => do
+      match
+        SquareIndex.all size
+          |>.find? (fun idx => s.find? (tsv.piece_vars p idx) |>.get!)
+      with
+      | some idx =>
+        let tile := tsv.ts.tiles[tsv.ts.h_ts.symm ▸ p]
+        match Tile.numRotations (board.diamond_to_tile idx.row idx.col) tile with
+        | some rot => return (idx,rot)
+        | none => throw "tile {p} does not fit at {i},{j} in the diamond solution:\n{board}"
+      | none => throw "Incomplete tile assignment"
     )
-  let tb : TileBoard size (Color.withBorder b c) := {
-    board := board
-    board_size := sorry
-  }
-  return tb
+  have : sol.size = size * size := sorry
+  return ⟨(sol[this.symm ▸ ·])⟩
 
-def writeSolution (filename : System.FilePath)
-                  (tsv : TileSetVariables size b c)
-                  (board : DiamondBoard size (Color.withBorder b c))
+def BoardSol.writeSolution (filename : System.FilePath)
+    [BEq c] {ts : TileSet size c} (sol : BoardSol ts)
                 : IO Unit := do
-  IO.FS.withFile filename .write (fun h =>
+  IO.FS.withFile filename .write (fun h => do
     -- h.putStrLn "c pieceNum x y rotation"
     h.putStrLn ""
+    for i in List.fins _ do
+      let (⟨x,y⟩,rot) := sol.pieceIdx i
+      h.putStrLn s!"{i} {x} {y} {rot}"
   )
-  for (i, tile) in tsv.tiles.enum do
-    let mut found := false
-    for hx : x in [0:size] do
-      for hy : y in [0:size] do
-        let x : Fin size := ⟨x,hx.2⟩
-        let y : Fin size := ⟨y,hy.2⟩
-        match Tile.numRotations (board.diamond_to_tile x y) tile with
-        | some rot =>
-          found := true
-          IO.FS.withFile filename .append (fun h =>
-            h.putStrLn s!"{i} {x} {y} {rot}"
-          )
-          break
-        | none => continue
-      if found then break
 
-def readSolution (filename : System.FilePath)
-                 (tsv : TileSetVariables size b c)
-               : IO (TileBoard size (Color.withBorder b c)) := do
+def BoardSol.readSolution (filename : System.FilePath)
+                 (ts : TileSet size (Color.withBorder b c))
+               : IO (BoardSol ts) := do
   let contents ← IO.FS.withFile filename .read (fun handle =>
     handle.readToEnd
   )
-  let data := contents.splitOn "\n" |>.filter (!·.startsWith "c")
 
-  let parseLine := fun (line : String) =>
+  have parseLine : String → IO (Fin _ × Fin _ × Fin _ × Fin 4) := fun line => do
     match line.splitOn " " with
     | [t, x, y, r] => (
       match (t.toNat?, x.toNat?, y.toNat?, r.toNat?) with
-      | (some t, some x, some y, some r) => (t,x,y,r)
+      | (some t, some x, some y, some r) =>
+        if ht : t ≥ size*size then
+          panic! s!"Tile index out of range: {line}"
+        else if hx : x ≥ size then
+          panic! s!"Row {x} out of range: {line}"
+        else if hy : y ≥ size then
+          panic! s!"Col {y} out of range: {line}"
+        else if hr : r ≥ 4 then
+          panic! s!"Rotation {r} out of range: {line}"
+        else pure (
+          ⟨t,Nat.not_ge_eq _ _ ▸ ht⟩,
+          ⟨x,Nat.not_ge_eq _ _ ▸ hx⟩,
+          ⟨y,Nat.not_ge_eq _ _ ▸ hy⟩,
+          ⟨r, by rw [Nat.not_ge_eq] at hr; exact hr⟩)
       | _ => panic! s!"Could not parse integers on line: {line}"
     )
     | _ => panic! s!"Incorrectly formatted sol line: {line}"
 
+  let data ← do
+    let lines :=
+      contents.splitOn "\n"
+      |>.map (·.trim) |>.filter (fun l => !(l.length = 0 || l.startsWith "c"))
+    let parsed ← lines.mapM parseLine 
+    pure <| parsed.foldl (init := Std.HashMap.empty) (fun map (t,loc) => map.insert t loc)
+
+  let array ← Array.initM (size*size) (fun i => do
+    match data.find? i with
+    | none => panic! s!"Piece {i} is missing from solution"
+    | some (x,y,r) => pure (⟨x,y⟩,r))
+  have : array.size = size*size := sorry
+  return ⟨(array[this.symm ▸ ·])⟩
+
+def BoardSol.toTileBoard {ts : TileSet size (Color.withBorder b c)}
+                          (sol : BoardSol ts)
+    : IO (TileBoard size (Color.withBorder b c)) := do
   let mut temp_board :=
     Array.init size (fun _ => Array.init size (fun _ => none))
-  for (t,x,y,r) in data.map parseLine do
+  for t in List.fins _ do
+    let (⟨x,y⟩,r) := sol.pieceIdx t
     temp_board :=
-      temp_board.set! y (temp_board[y]!.set! x (some <| tsv.tiles[t]!.rotln r))
+      temp_board.set! y (temp_board[y]!.set! x (some <| ts.tiles[ts.h_ts.symm ▸ t].rotln r))
 
   let board := Array.init size (fun y =>
     Array.init size (fun x =>

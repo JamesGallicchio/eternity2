@@ -28,6 +28,15 @@ def toFin : SquareIndex size → Fin (size * size)
   apply Nat.le_of_succ_le_succ hi
   exact hj⟩
 
+def ofFin : Fin (size*size) → SquareIndex size
+| ⟨i,hi⟩ =>
+  have : size > 0 := by
+    cases size
+    . simp at hi; contradiction
+    . exact Nat.zero_lt_succ _
+  ⟨ ⟨i / size, (Nat.div_lt_iff_lt_mul this).mpr hi⟩
+  , ⟨i % size, Nat.mod_lt _ this⟩⟩
+
 private def maxIdx {psize : Nat} : Fin psize.succ := ⟨psize, Nat.lt_succ_self _⟩
 
 private def middleFins (psize : Nat) : List (Fin psize.succ) :=
@@ -101,6 +110,19 @@ def all (size : Nat) : List (SquareIndex size) :=
   List.fins size |>.bind fun i =>
     List.fins size |>.map fun j =>
       ⟨i,j⟩
+
+/-- List of indices at the k'th "layer" of the board, where 0 is the
+border pieces and k/2 is the center piece (for odd sizes) /
+pieces (for even sizes)
+-/
+def layerK (size : Nat) (k : Nat) : List (SquareIndex size) :=
+  if k * 2 ≥ size then [] else
+  all size |>.filter (fun ⟨i,j⟩ =>
+    -- top/bottom row
+    (i = k || i = size-k-1) && k ≤ j && j < (size-k)
+    -- left/right column
+    || (j = k || j = size-k-1) && k ≤ i && i < (size-k)
+  )
 
 instance : ToString (SquareIndex size) where
   toString | ⟨i, j⟩ => s!"r{i}c{j}"
@@ -303,7 +325,7 @@ def rotl : Tile c → Tile c
 
 def rotln (n : Nat) : Tile c → Tile c := Function.iterate rotl n
 
-def numRotations [BEq c] (tile1 tile2 : Tile c) :=
+def numRotations [BEq c] (tile1 tile2 : Tile c) : Option (Fin 4) :=
   if rotate 0 then some 0 else
   if rotate 1 then some 1 else
   if rotate 2 then some 2 else

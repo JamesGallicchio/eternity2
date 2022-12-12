@@ -174,7 +174,7 @@ def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
   let dboard ← GenBoard.generate size coreColors edgeColors
   let board := dboard.tileBoard
 
-  findCorrs board (iters := iters) (timeout := timeout)
+  findCorrs board.tileSet (iters := iters) (timeout := timeout)
   return 0
 
 def findSignCorrsCmd := `[Cli|

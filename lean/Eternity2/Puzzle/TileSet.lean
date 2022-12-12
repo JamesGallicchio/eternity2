@@ -4,12 +4,14 @@ namespace Eternity2
 
 open Std
 
-structure TileSet (size : Nat) (color : Type u) where
+structure TileSet (size : Nat) (color : Type u) [BEq color] where
   tiles : List (Tile color)
-deriving Inhabited, BEq
+  h_ts : tiles.length = size * size
 
-def TileBoard.tileSet (tb : TileBoard size c) : TileSet size c :=
-  ⟨tb.tiles⟩
+instance [BEq c] : BEq (TileSet s c) := ⟨(·.tiles == ·.tiles)⟩
+
+def TileBoard.tileSet [BEq c] (tb : TileBoard size c) : TileSet size c :=
+  ⟨tb.tiles, by simp [tiles]; sorry⟩
 
 namespace TileSet
 
@@ -24,7 +26,7 @@ def scramble (ts : TileSet size (Color.withBorder b c))
   let corners ← rotated.filter (·.isCorner) |> IO.randPerm
   let sides   ← rotated.filter (·.isSide)   |> IO.randPerm
   let centers ← rotated.filter (·.isCenter) |> IO.randPerm
-  return ⟨corners ++ sides ++ centers⟩
+  return ⟨corners ++ sides ++ centers, sorry⟩
 
 def toFileFormat (ts : TileSet size (Color.withBorder b c)) : String :=
   s!"c {size}x{size} board with {b} border colors, {c} center colors\n" ++
@@ -105,7 +107,10 @@ def fromFile (file : System.FilePath) : IO (Σ size b c, TileSet size (Color.wit
     else
       panic! s!"Interpreting file as having {b} border colors, {c} center colors, found invalid piece:\n{t}"
   )
-  return ⟨size, b, c, ⟨tiles⟩⟩
+  if h : tiles.length = size * size then
+    return ⟨size, b, c, ⟨tiles, h⟩⟩
+  else
+    panic! s!"File lists {tiles.length} pieces, but {size*size} were expected"
 
 def toString (ts : TileSet size (Color.withBorder b c)) : String :=
   ts.tiles.map (·.toString)
