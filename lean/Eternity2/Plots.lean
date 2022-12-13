@@ -292,22 +292,25 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
       let timedOut ← TaskIO.parTasks [0:10] fun iter => do
+        /- Get tileset -/
         let ⟨_,_,_,ts⟩ ← TileSet.fromFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
-        match EncCNF.new? <| encodePuzzle ts es with
+        /- If using default solution's signs, then get that signSol -/
+        let signSol := ←
+          if !useSolSigns then
+            pure none
+          else do
+            let sol ← BoardSol.readSolution
+              (boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
+              ts
+            pure <| some <| SignSol.ofSol ts sol
+        /- Encode puzzle -/
+        match EncCNF.new? <| encodePuzzle ts es signSol with
         | .error s =>
           IO.println s!"Encoding board {size}/{colors}/board_{iter}.puz failed: {s}"
           return true
         | .ok (tsv, enc) =>
-        /- Add the solution's signs, if desired -/
-        let ((), enc) ← if !useSolSigns then pure ((), enc) else do
-          let sol ← BoardSol.readSolution
-            (boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
-            tsv.ts
-          let signsol := SignSol.ofSol tsv.ts sol
-          pure <| EncCNF.run! enc do
-            Constraints.associatePolarities tsv
-            Constraints.signSolConstraints tsv signsol
+        /- Solve, with timeout & timing-/
         let startTime ← IO.monoMsNow
         let timedOut ← IO.mkRef false
         let _ ← SolvePuzzle.solveAll enc tsv (termCond := some do
