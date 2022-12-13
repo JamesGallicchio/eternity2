@@ -283,9 +283,10 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
     (es : EncodingSettings) (useSolSigns : Bool := false)
     : IO Unit := do
   let es := if useSolSigns then {es with usePolarity := false} else es
+  let startMul := if useSolSigns then 3 else 5
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
-    let mut colors := 5*size-15
+    let mut colors := startMul*(size-4)+5
     let mut decreasing := true
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
