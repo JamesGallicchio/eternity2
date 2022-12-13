@@ -1,4 +1,5 @@
 import Eternity2.Puzzle.TileSet
+import Eternity2.Puzzle.SignSol
 import Eternity2.SATSolve.CardinalityHelpers
 
 namespace Eternity2.Constraints
@@ -489,6 +490,16 @@ def associatePolarities (ts : TileSetVariables size b c) : EncCNF Unit := do
       else
         -- negative location
         addClause [.not <| ts.piece_vars p ⟨i,j⟩, .not <| ts.sign_vars p]
+
+def signSolConstraints (tsv : TileSetVariables size b c) (sol : SignSol tsv.ts) : EncCNF Unit := do
+  -- For each piece if we have its sign, assign the sign
+  for p in List.fins _ do
+    match sol.signAt p with
+    | none => pure ()
+    | some .plus =>
+      addClause [tsv.sign_vars p]
+    | some .minus =>
+      addClause [.not <| tsv.sign_vars p]
 
 end Constraints
 
