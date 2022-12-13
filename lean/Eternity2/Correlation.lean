@@ -2,7 +2,10 @@ import Eternity2.Puzzle
 
 open Eternity2
 
-def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c) (iters timeout : Nat) : IO (List (SquareIndex size × SquareIndex size × Nat × Nat)) := do
+def getCorrs (enc : EncCNF.State)
+             (tsv : Constraints.TileSetVariables size b c)
+             (iters timeout : Nat)
+           : IO (List (SquareIndex size × SquareIndex size × Nat × Nat)) := do
   let signsols ← (do
     let mut signsols ← IO.mkRef []
     for i in [0:iters] do
@@ -39,6 +42,73 @@ def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c) 
       (p1, p2, sameCount, diffCount)
     ]
   return corrs
+
+def runCorrelation (enc : EncCNF.State)
+                   (tsv : Constraints.TileSetVariables size b c)
+                   (iters timeout : Nat)
+                   (assigned : List (SquareIndex size × SquareIndex size))
+                   (piece_set : List (SquareIndex size))
+                 : IO (Option (SquareIndex size × SquareIndex size × Nat × Nat)) := do
+  let corrs ← getCorrs enc tsv iters timeout
+  let guess :=
+    corrs.foldl (fun acc (p1,p2,s,d) =>
+      match acc with
+      | none =>
+        if !assigned.contains (p1,p2)
+          &&( (piece_set.contains p1 && !piece_set.contains p2)
+            ||(!piece_set.contains p1 && piece_set.contains p2)
+            || piece_set.isEmpty )
+        then some (p1,p2,s,d)
+        else none
+
+      | some (_,_,ms,md) =>
+        if !assigned.contains (p1,p2)
+          &&( (piece_set.contains p1 && !piece_set.contains p2)
+            ||(!piece_set.contains p1 && piece_set.contains p2)
+            || piece_set.isEmpty )
+          && min s d < min ms md
+        then some (p1,p2,s,d)
+        else acc
+    ) none
+  return guess
+
+
+partial def searchSpace (enc : EncCNF.State)
+                (tsv : Constraints.TileSetVariables size b c)
+                (iters timeout : Nat)
+                (assigned : List (SquareIndex size × SquareIndex size))
+                (piece_set : List (SquareIndex size))
+                (rights : Nat)
+                (fail : Unit → IO Unit)
+              : IO Unit := do
+  let guess ← runCorrelation enc tsv iters timeout assigned piece_set
+  match guess with
+  | none =>
+    -- todo check whether we are at a sol, if we are return, otherwise call fc
+    sorry
+  | some (p1,p2,same,diff) =>
+    let (p1v, p2v) := (tsv.sign_vars p1.toFin, tsv.sign_vars p2.toFin)
+    let (enc_same, enc_diff) :=
+        ( (·.2) <| EncCNF.run! enc do
+            EncCNF.addClause [.not p1v, p2v]
+            EncCNF.addClause [p1v, .not p2v]
+        , (·.2) <| EncCNF.run! enc do
+            EncCNF.addClause [p1v, p2v]
+            EncCNF.addClause [.not p1v, .not p2v]
+        )
+    let (encl, encr) :=
+      if same > diff then (enc_same, enc_diff) else (enc_diff, enc_same)
+
+    let assigned'  := (p1, p2) :: assigned
+    let piece_set' := p1 :: p2 :: piece_set
+
+    if rights > 0 then
+      searchSpace encr tsv iters timeout assigned' piece_set' (rights - 1)
+        (fun () =>
+          searchSpace encl tsv iters timeout assigned' piece_set' rights fail
+        )
+    else
+      searchSpace encl tsv iters timeout assigned' piece_set' rights fail
 
 partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (iters timeout : Nat) : IO Unit := do
   match EncCNF.new? do
@@ -92,28 +162,11 @@ partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (iters timeout 
   let mut assigned := []
   let mut piece_set := []
   while true do
-    let corrs ← getCorrs enc tsv iters timeout
-    let guess := corrs.foldl (fun acc (p1,p2,s,d) =>
-      match acc with
-      | none =>
-        if !assigned.contains (p1,p2)
-        &&( (piece_set.contains p1 && !piece_set.contains p2)
-          ||(!piece_set.contains p1 && piece_set.contains p2)
-          || piece_set.isEmpty )
-        then some (p1,p2,s,d)
-        else none
-      | some (_,_,ms,md) =>
-        if !assigned.contains (p1,p2)
-        &&( (piece_set.contains p1 && !piece_set.contains p2)
-          ||(!piece_set.contains p1 && piece_set.contains p2)
-          || piece_set.isEmpty )
-        && min s d < min ms md
-        then some (p1,p2,s,d)
-        else acc
-    ) none
+    let guess ← runCorrelation enc tsv iters timeout assigned piece_set
+
     match guess with
     | none =>
-      break
+        break
     | some (p1,p2, same,diff) =>
       let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
       let actSame :=
