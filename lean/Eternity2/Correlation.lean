@@ -83,6 +83,8 @@ partial def searchSpace
               (rights : Nat)
               (fail : Unit → IO (Option (HashMap EncCNF.Var Bool)))
             : IO (Option (HashMap EncCNF.Var Bool)) := do
+  if rights >= size * size then return none
+
   let guess ← runCorrelation enc tsv iters timeout assigned piece_set
   match guess with
   | none =>
@@ -113,12 +115,15 @@ partial def searchSpace
     let piece_set' := p1 :: p2 :: piece_set
 
     if rights > 0 then
-      searchSpace encr tsv iters timeout assigned' piece_set' (rights - 1)
-        (fun () =>
+      searchSpace encr tsv iters timeout assigned' piece_set' (rights - 1) (
+        fun () =>
           searchSpace encl tsv iters timeout assigned' piece_set' rights fail
-        )
+      )
     else
-      searchSpace encl tsv iters timeout assigned' piece_set' rights fail
+      searchSpace encl tsv iters timeout assigned' piece_set' rights (
+        fun () =>
+          searchSpace encl tsv iters timeout assigned' piece_set' (rights + 1) fail
+      )
 
 partial def findCorrs (ts : TileSet size (Color.withBorder b c))
                       (iters timeout : Nat)
