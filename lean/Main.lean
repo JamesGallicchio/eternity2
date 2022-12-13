@@ -75,6 +75,8 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
       |>.getD s!"{output}.log"
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
+  let signSol := p.flag? "sign-sol" |>.map (·.as! String)
+  let parCorners := p.flag! "parallel-corners" |>.as! Bool
 
   ensureDirectoryExists output
   
@@ -84,13 +86,14 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
   | ⟨_, _, _, tiles⟩ =>
 
   IO.FS.writeFile logfile ""
-  IO.FS.withFile logfile .append (fun handle =>
+  IO.FS.withFile logfile .append (fun handle => do
     TaskIO.wait <|
       Log.run handle <|
         outputAllSols
           tileset.fileStem.get! tiles output
           { useRedundant, usePolarity}
-          (parallelize := true)
+          (parallelize := parCorners)
+          (signSol := ← signSol.mapM (SignSol.readSolution · tiles))
   )
 
   return 0
@@ -105,9 +108,38 @@ def solveTileSetCmd := `[Cli|
     logfile : String; "File for detailed logs"
     "use-redundant" : Bool; "Use redundant clauses (forbidden color & explicit piece locations)"
     "use-polarity" : Bool; "Use sign polarity constraints"
-  
+    "sign-sol" : String; "If specified, the file with the sign solution to use"
+    "parallel-corners" : Bool; "Run all corner configurations in parallel"
+
   EXTENSIONS:
-    defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
+    defaultValues! #[
+      ("use-redundant", "true")
+    , ("use-polarity", "false")
+    , ("parallel-corners", "false") ]
+]
+
+def runConvertSolToSignsCmd (p : Parsed) : IO UInt32 := do
+  let tileset : FilePath := p.flag! "tileset" |>.as! String
+  let input : FilePath := p.flag! "input" |>.as! String
+  let output : FilePath := p.flag! "output" |>.as! String
+
+  match ← TileSet.fromFile tileset with
+  | ⟨_, _, _, ts⟩ =>
+
+  let sol ← BoardSol.readSolution input ts
+  let ssol := SignSol.ofSol ts sol
+  ssol.writeSolution output
+
+  return 0
+
+def convertSolToSignsCmd := `[Cli|
+  "convert-sol-to-signs" VIA runConvertSolToSignsCmd; ["0.0.1"]
+  "Given a board solution, get the sign solution derived from it."
+
+  FLAGS:
+    tileset : String; "File containing the original tileset"
+    input : String; "File containing the board solution"
+    output : String; "File to output the sign solution"
 ]
 
 def runGenBoardSuiteCmd (p : Parsed) : IO UInt32 := do
@@ -199,6 +231,7 @@ def mainCmd := `[Cli|
     genTileSetCmd;
     genBoardSuiteCmd;
     solveTileSetCmd;
+    convertSolToSignsCmd;
     testSolveTimesCmd;
     findSignCorrsCmd
 ]

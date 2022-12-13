@@ -202,28 +202,29 @@ def findEternityEdgeSols : IO Unit := do
 def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
       (outputFolder : FilePath)
       (es : EncodingSettings)
+      (signSol : Option (SignSol ts) := none)
       (parallelize : Bool := false)
       : Log TaskIO Unit
   := do
-  match EncCNF.new? <| encodePuzzle ts es with
+  match EncCNF.new? <| encodePuzzle ts es signSol with
   | .error s =>
     Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
   | .ok (tsv, enc) =>
-  IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
-    enc.printAux handle.putStrLn
   let counter ← IO.mkRef 0
   if parallelize then
     fun handle => do
     TaskIO.parUnit (List.fins 6) fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do
-        Constraints.fixCorners tsv i
+        Constraints.fixCornerConfig tsv i
+      IO.FS.withFile (outputFolder / s!"{name}_c{i}.cnf") .write fun handle =>
+        enc.printAux handle.putStrLn
       Log.info s!"Board {name} c{i}: Starting solver"
       solveAndOutput tsv enc s!"{name} c{i}" counter
       Log.info s!"Board {name} c{i}: Solver finished"
   else
-    let ((), enc) := EncCNF.run! enc do
-      Constraints.fixCorner tsv
+    IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
+      enc.printAux handle.putStrLn
     solveAndOutput tsv enc name counter
   IO.FS.writeFile (outputFolder / "done") ""
   Log.info s!"Board {name}: All solutions found"

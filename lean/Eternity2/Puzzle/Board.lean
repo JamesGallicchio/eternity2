@@ -308,6 +308,11 @@ def Sign.toString : Sign → String
 | minus => "-"
 instance : ToString Sign := ⟨Sign.toString⟩
 
+def Sign.ofString : String → Option Sign
+| "+" => plus
+| "-" => minus
+| _ => none 
+
 structure SignedTile (color : Type u) extends Tile color where
   sign : Sign
 

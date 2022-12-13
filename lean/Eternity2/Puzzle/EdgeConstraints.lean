@@ -389,17 +389,23 @@ def forbiddenColors (tsv : TileSetVariables size b c) : EncCNF Unit := do
           EncCNF.addClause [.not (tsv.piece_vars p q), .not (tsv.diamond_vars (ds i) c)]
 
 /- Break rotational symmetry by assigning a corner to (0,0) -/
-def fixCorner (tsv : TileSetVariables size b c) : EncCNF Unit := do
+def fixCorner (tsv : TileSetVariables size b c) (signSol : Option (SignSol tsv.ts) := none) : EncCNF Unit := do
   if h:size > 0 then
-    for (i, _) in tsv.ts.tiles.enum.find? (·.2.isCorner) do
-      if hi:_ then
-        addClause [tsv.piece_vars ⟨i, hi⟩ ⟨⟨0,h⟩,⟨0,h⟩⟩]
-      else panic! "woah"
+    let what := tsv.ts.tiles.enum'.map (fun (i, t) => (tsv.ts.h_ts ▸ i, t))
+    match signSol with
+    | none =>
+      for (i, _) in what.find? (fun (i, t) => t.isCorner) do
+        addClause [tsv.piece_vars i ⟨⟨0,h⟩,⟨0,h⟩⟩]
+    | some signSol =>
+      for (i, _) in what.find? (fun (i, t) =>
+        t.isCorner && signSol.signAt i = some .plus) do
+        addClause [tsv.piece_vars i ⟨⟨0,h⟩,⟨0,h⟩⟩]
 
-/- Constrain board to be the i'th corner configuration -/
-def fixCorners (tsv : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := do
+/- Constrain board to the i'th corner configuration -/
+def fixCornerConfig (tsv : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := do
   if h:size > 0 then
-    let corners := tsv.ts.tiles.enum'.filter (fun (_, t) => t.isCorner)
+    let corners := tsv.ts.tiles.enum'.filterMap (fun (i, t) =>
+      if t.isCorner then some (tsv.ts.h_ts ▸ i, t) else none)
     match corners with
     | [a,b,c,d] =>
       let (b,c,d) :=
@@ -410,10 +416,21 @@ def fixCorners (tsv : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := 
         | 3 => (c,d,b)
         | 4 => (d,b,c)
         | 5 => (d,c,b)
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ a.1) ⟨⟨0,h⟩,        ⟨0,h⟩⟩]
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ b.1) ⟨⟨0,h⟩,        Fin.last _ h⟩]
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ c.1) ⟨Fin.last _ h, ⟨0,h⟩⟩]
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ d.1) ⟨Fin.last _ h, Fin.last _ h⟩]
+      let poses : List (SquareIndex size) :=
+        [ ⟨⟨0,h⟩,        ⟨0,h⟩⟩
+        , ⟨⟨0,h⟩,        Fin.last _ h⟩
+        , ⟨Fin.last _ h, ⟨0,h⟩⟩
+        , ⟨Fin.last _ h, Fin.last _ h⟩]
+      /- a -> b -> c -> d, for each possible rotation -/
+      for i in List.fins 4 do
+        EncCNF.addClause [.not <| tsv.piece_vars a.1 (poses[i+0]),
+                                  tsv.piece_vars b.1 (poses[i+1])]
+        EncCNF.addClause [.not <| tsv.piece_vars b.1 (poses[i+1]),
+                                  tsv.piece_vars c.1 (poses[i+2])]
+        EncCNF.addClause [.not <| tsv.piece_vars c.1 (poses[i+2]),
+                                  tsv.piece_vars d.1 (poses[i+3])]
+        EncCNF.addClause [.not <| tsv.piece_vars d.1 (poses[i+3]),
+                                  tsv.piece_vars a.1 (poses[i+0])]
     | _ =>
       panic! s!"Tileset had {corners.length} corners"
 
@@ -504,27 +521,37 @@ def signSolConstraints (tsv : TileSetVariables size b c) (sol : SignSol tsv.ts) 
 end Constraints
 
 structure EncodingSettings where
-  useRedundant  : Bool := true
-  usePolarity   : Bool := false
-  fixCorner     : Bool := true
-  fixCorners    : Option (Fin 6) := none
+  useRedundant    : Bool := true
+  usePolarity     : Bool := false
+  fixCorner       : Bool := true
+  fixCornerConfig : Option (Fin 6) := none
 
-def encodePuzzle (ts : TileSet size (Color.withBorder b c)) (es : EncodingSettings)
+def encodePuzzle
+      (ts : TileSet size (Color.withBorder b c)) (es : EncodingSettings)
+      (signSol : Option (SignSol ts) := none)
   : EncCNF (Constraints.TileSetVariables size b c)
   := do
   let tsv ← Constraints.mkVars ts
+  have : tsv.ts = ts := sorry
   Constraints.compactEncoding tsv
 
   if es.useRedundant then
     Constraints.forbiddenColors tsv
     Constraints.pieceExplicitConstraints tsv
 
-  if es.usePolarity then
-    Constraints.colorCardConstraints tsv
+  match signSol with
+  | some signSol =>
     Constraints.associatePolarities tsv
+    Constraints.signSolConstraints tsv (this ▸ signSol)
+  | none =>
+    if es.usePolarity then
+      Constraints.colorCardConstraints tsv
+      Constraints.associatePolarities tsv
 
-  match es.fixCorners with
-  | none => if es.fixCorner then Constraints.fixCorner tsv
-  | some i => Constraints.fixCorners tsv i
+  if es.fixCorner then
+    Constraints.fixCorner tsv (this ▸ signSol)
+  
+  for i in es.fixCornerConfig do
+    Constraints.fixCornerConfig tsv i
 
   return tsv

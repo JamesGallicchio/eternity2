@@ -11,7 +11,7 @@ def BoardSol.writeSolution (filename : System.FilePath)
     [BEq c] {ts : TileSet size c} (sol : BoardSol ts)
                 : IO Unit := do
   IO.FS.withFile filename .write (fun h => do
-    -- h.putStrLn "c pieceNum x y rotation"
+    h.putStrLn "c pieceNum x y rotation"
     h.putStrLn ""
     for i in List.fins _ do
       let (⟨x,y⟩,rot) := sol.pieceIdx i
