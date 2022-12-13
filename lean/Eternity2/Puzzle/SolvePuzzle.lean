@@ -35,7 +35,7 @@ def SolvePuzzle.decodePieces
       with
       | some idx =>
         let tile := tsv.ts.tiles[tsv.ts.h_ts.symm ▸ p]
-        match Tile.numRotations tile (board.diamond_to_tile idx.row idx.col) with
+        match Tile.numRotations (board.diamond_to_tile idx.row idx.col) tile with
         | some rot => return (idx,rot)
         | none => throw "tile {p} does not fit at {i},{j} in the diamond solution:\n{board}"
       | none => throw "Incomplete tile assignment"
