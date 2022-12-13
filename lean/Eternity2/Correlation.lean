@@ -1,6 +1,7 @@
 import Eternity2.Puzzle
 
 open Eternity2
+open Std
 
 def getCorrs (enc : EncCNF.State)
              (tsv : Constraints.TileSetVariables size b c)
@@ -73,19 +74,28 @@ def runCorrelation (enc : EncCNF.State)
   return guess
 
 
-partial def searchSpace (enc : EncCNF.State)
-                (tsv : Constraints.TileSetVariables size b c)
-                (iters timeout : Nat)
-                (assigned : List (SquareIndex size × SquareIndex size))
-                (piece_set : List (SquareIndex size))
-                (rights : Nat)
-                (fail : Unit → IO Unit)
-              : IO Unit := do
+partial def searchSpace
+              (enc : EncCNF.State)
+              (tsv : Constraints.TileSetVariables size b c)
+              (iters timeout : Nat)
+              (assigned : List (SquareIndex size × SquareIndex size))
+              (piece_set : List (SquareIndex size))
+              (rights : Nat)
+              (fail : Unit → IO (Option (HashMap EncCNF.Var Bool)))
+            : IO (Option (HashMap EncCNF.Var Bool)) := do
   let guess ← runCorrelation enc tsv iters timeout assigned piece_set
   match guess with
   | none =>
-    -- todo check whether we are at a sol, if we are return, otherwise call fc
-    sorry
+    if rights > 0 then
+      let full_enc := (·.2) <| EncCNF.run! enc do
+        Constraints.compactEncoding tsv
+        Constraints.fixCorner tsv
+        Constraints.associatePolarities tsv
+      let (_, res) := SATSolve.solve full_enc tsv.pieceVarList
+      if res.isSat then return res.getAssn?
+
+    fail ()
+
   | some (p1,p2,same,diff) =>
     let (p1v, p2v) := (tsv.sign_vars p1.toFin, tsv.sign_vars p2.toFin)
     let (enc_same, enc_diff) :=
@@ -110,7 +120,9 @@ partial def searchSpace (enc : EncCNF.State)
     else
       searchSpace encl tsv iters timeout assigned' piece_set' rights fail
 
-partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (iters timeout : Nat) : IO Unit := do
+partial def findCorrs (ts : TileSet size (Color.withBorder b c))
+                      (iters timeout : Nat)
+                    : IO Unit := do
   match EncCNF.new? do
     let tsv ← Constraints.mkVars ts
     Constraints.colorCardConstraints tsv
