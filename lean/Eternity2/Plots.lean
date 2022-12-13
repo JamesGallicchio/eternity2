@@ -280,8 +280,9 @@ def genBoardSuite (output : FilePath) : IO Unit := do
 
 
 def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
-    (es : EncodingSettings)
+    (es : EncodingSettings) (useSolSigns : Bool := false)
     : IO Unit := do
+  let es := if useSolSigns then {es with usePolarity := false} else es
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
     let mut colors := 5*size-15
@@ -296,6 +297,15 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
           IO.println s!"Encoding board {size}/{colors}/board_{iter}.puz failed: {s}"
           return true
         | .ok (tsv, enc) =>
+        /- Add the solution's signs, if desired -/
+        let ((), enc) ← if !useSolSigns then pure ((), enc) else do
+          let sol ← BoardSol.readSolution
+            (boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
+            tsv.ts
+          let signsol := SignSol.ofSol tsv.ts sol
+          pure <| EncCNF.run! enc do
+            Constraints.associatePolarities tsv
+            Constraints.signSolConstraints tsv signsol
         let startTime ← IO.monoMsNow
         let timedOut ← IO.mkRef false
         let _ ← SolvePuzzle.solveAll enc tsv (termCond := some do

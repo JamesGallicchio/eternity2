@@ -143,12 +143,14 @@ def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
   let timeout : Nat := p.flag! "timeout" |>.as! Nat
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
+  let useSolSigns := p.flag! "use-sol-signs" |>.as! Bool
 
   testSolveTimes suite timeout {
     useRedundant,
     usePolarity,
     fixCorner := true
-  }
+  } (useSolSigns := useSolSigns)
+
   return 0
 
 def testSolveTimesCmd := `[Cli|
@@ -160,6 +162,7 @@ def testSolveTimesCmd := `[Cli|
     timeout : Nat; "Timeout (in sec) to use when determining what color to stop sampling at"
     "use-redundant" : Bool; "Use redundant clauses (forbidden color & explicit piece locations)"
     "use-polarity" : Bool; "Use sign polarity constraints"
+    "use-sol-signs" : Bool; "Constrain tile signs to the (known) default board solution's signs"
   
   EXTENSIONS:
     defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
