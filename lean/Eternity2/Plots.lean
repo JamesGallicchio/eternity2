@@ -202,28 +202,29 @@ def findEternityEdgeSols : IO Unit := do
 def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
       (outputFolder : FilePath)
       (es : EncodingSettings)
+      (signSol : Option (SignSol ts) := none)
       (parallelize : Bool := false)
       : Log TaskIO Unit
   := do
-  match EncCNF.new? <| encodePuzzle ts es with
+  match EncCNF.new? <| encodePuzzle ts es signSol with
   | .error s =>
     Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
   | .ok (tsv, enc) =>
-  IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
-    enc.printAux handle.putStrLn
   let counter ← IO.mkRef 0
   if parallelize then
     fun handle => do
     TaskIO.parUnit (List.fins 6) fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do
-        Constraints.fixCorners tsv i
+        Constraints.fixCornerConfig tsv i
+      IO.FS.withFile (outputFolder / s!"{name}_c{i}.cnf") .write fun handle =>
+        enc.printAux handle.putStrLn
       Log.info s!"Board {name} c{i}: Starting solver"
       solveAndOutput tsv enc s!"{name} c{i}" counter
       Log.info s!"Board {name} c{i}: Solver finished"
   else
-    let ((), enc) := EncCNF.run! enc do
-      Constraints.fixCorner tsv
+    IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
+      enc.printAux handle.putStrLn
     solveAndOutput tsv enc name counter
   IO.FS.writeFile (outputFolder / "done") ""
   Log.info s!"Board {name}: All solutions found"
@@ -280,22 +281,36 @@ def genBoardSuite (output : FilePath) : IO Unit := do
 
 
 def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
-    (es : EncodingSettings)
+    (es : EncodingSettings) (useSolSigns : Bool := false)
     : IO Unit := do
+  let es := if useSolSigns then {es with usePolarity := false} else es
+  let startMul := if useSolSigns then 3 else 5
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
-    let mut colors := 5*size-15
+    let mut colors := startMul*(size-4)+5
     let mut decreasing := true
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
       let timedOut ← TaskIO.parTasks [0:10] fun iter => do
+        /- Get tileset -/
         let ⟨_,_,_,ts⟩ ← TileSet.fromFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
-        match EncCNF.new? <| encodePuzzle ts es with
+        /- If using default solution's signs, then get that signSol -/
+        let signSol := ←
+          if !useSolSigns then
+            pure none
+          else do
+            let sol ← BoardSol.readSolution
+              (boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
+              ts
+            pure <| some <| SignSol.ofSol ts sol
+        /- Encode puzzle -/
+        match EncCNF.new? <| encodePuzzle ts es signSol with
         | .error s =>
           IO.println s!"Encoding board {size}/{colors}/board_{iter}.puz failed: {s}"
           return true
         | .ok (tsv, enc) =>
+        /- Solve, with timeout & timing-/
         let startTime ← IO.monoMsNow
         let timedOut ← IO.mkRef false
         let _ ← SolvePuzzle.solveAll enc tsv (termCond := some do
