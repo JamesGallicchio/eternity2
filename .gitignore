@@ -1,8 +1,7 @@
 .DS_Store
 
 /lean/build
-/lean/lean_packages/*
-!/lean/lean_packages/manifest.json
+/lean/lake-packages/*
 
 /py/__pycache__
 
