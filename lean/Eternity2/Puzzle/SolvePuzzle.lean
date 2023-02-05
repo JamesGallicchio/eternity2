@@ -1,17 +1,17 @@
 import Eternity2.Puzzle.EdgeConstraints
 import Eternity2.Puzzle.Board
-import Eternity2.SATSolve
+import SolverConfig
 
 namespace Eternity2
 
-open Constraints EncCNF
+open Constraints LeanSAT Encode EncCNF
 
 structure BoardSol [BEq c] (ts : TileSet size c) where
   /-- For each tile in tileset, its index + rotation (0 = up) -/
   pieceIdx : Fin (size * size) → SquareIndex size × Fin 4
 
 def SolvePuzzle.decodeDiamonds (tsv : Constraints.TileSetVariables size b c)
-              (s : Std.HashMap EncCNF.Var Bool) :=
+              (s : Std.HashMap Var Bool) :=
   let tb : DiamondBoard size (Option (Color.withBorder b c)) := {
     board :=
       Array.init _ (fun k =>
@@ -24,7 +24,7 @@ def SolvePuzzle.decodeDiamonds (tsv : Constraints.TileSetVariables size b c)
 
 def SolvePuzzle.decodePieces
       (tsv : Constraints.TileSetVariables size b c)
-      (s : Std.HashMap EncCNF.Var Bool)
+      (s : Std.HashMap Var Bool)
     : Except String (BoardSol tsv.ts) := do
   let board ← decodeDiamonds tsv s |>.expectFull
   let sol ←
@@ -160,22 +160,16 @@ def BoardSol.scramble {ts : TileSet size (Color.withBorder b c)} (sol : BoardSol
 
 
 def SolvePuzzle.solve (enc : EncCNF.State) (tsv : TileSetVariables size b c)
-  : Option (DiamondBoard size (Option (Color.withBorder b c))) :=
-  let pVars := tsv.pieceVarList
-  let dVars := tsv.diamondVarList
-  SATSolve.solve enc (pVars ++ dVars)
-  |>.2.getAssn?.map fun assn =>
-  decodeDiamonds tsv assn
+  : IO <| Option <| DiamondBoard size <| Option <| Color.withBorder b c := do
+  match ← Solver.solve enc.toFormula with
+  | .sat assn =>
+    return some <| decodeDiamonds tsv assn
+  | _ =>
+    return none
 
 /-- Find all solutions -/
 def SolvePuzzle.solveAll (enc : EncCNF.State) (tsv : TileSetVariables size b c)
-  (termCond : Option (IO Bool) := none)
   : IO (List (DiamondBoard size (Option (Color.withBorder b c)))) := do
-  let pVars := tsv.pieceVarList
   let dVars := tsv.diamondVarList
-  let sols : IO.Ref (List _) ← IO.mkRef []
-  SATSolve.allSols enc (pVars ++ dVars) (varsToBlock := dVars)
-    (termCond := termCond)
-    (perItem := fun assn => do
-      sols.modify (decodeDiamonds tsv assn :: ·))
-  return ←sols.get
+  let sols ← Solver.allSolutions enc.toFormula (varsToBlock := dVars)
+  return sols.map (decodeDiamonds tsv ·)

@@ -1,11 +1,12 @@
 import Eternity2.Puzzle.TileSet
-import Eternity2.SATSolve.CardinalityHelpers
 
-namespace Eternity2.Constraints
+namespace Eternity2
 
-open Std EncCNF
+open Std LeanSAT Encode EncCNF Notation
 
 /- Implement constraints as described in Heule 2008 -/
+
+namespace Constraints
 
 structure TileSetVariables (size b c : Nat) where
   ts : TileSet size (Color.withBorder b c)
@@ -63,90 +64,63 @@ def mkVars (ts : TileSet size (Color.withBorder b c))
   match ts.tiles.isDistinct with
   | false => throw s!"some tiles not unique; currently unsupported"
   | true =>
-  let pvs ← EncCNF.mkVarBlock "x" [size*size, size*size]
-  let dvs ← EncCNF.mkVarBlock "y" [2 * (size * size.succ), b+c+1]
-  let svs ← EncCNF.mkVarBlock "z" [size*size]
+  let pvs ← mkVarBlock "x" [size*size, size*size]
+  let dvs ← mkVarBlock "y" [2 * (size * size.succ), b+c+1]
+  let svs ← mkVarBlock "z" [size*size]
   return ⟨ts, (pvs[·][·.toFin]), (dvs[·.toFin][·]), (svs[·])⟩
 
 def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
 
-  /- Each square has a tile -/
-  for (q,_) in SquareIndex.corners size do
-    EncCNF.addClause (tsv.cornerTiles |>.map (tsv.piece_vars ·.2 q))
+  let squaresAndTiles :=
+    [ (0, SquareIndex.corners  size |>.map (·.1), tsv.cornerTiles |>.map (·.2))
+    , (1, SquareIndex.sides    size |>.map (·.1), tsv.sideTiles   |>.map (·.2))
+    , (2, SquareIndex.center   size |>.map (·.1), tsv.centerTiles |>.map (·.2))]
 
-  for (q,_) in SquareIndex.sides size do
-    EncCNF.addClause (tsv.sideTiles |>.map (tsv.piece_vars ·.2 q))
-
-  for (q,_) in SquareIndex.center size do
-    EncCNF.addClause (tsv.centerTiles |>.map (tsv.piece_vars ·.2 q))
-
-  /- Each tile has a square -/
-  for (_,p) in tsv.cornerTiles do
-    EncCNF.addClause (SquareIndex.corners size |>.map (tsv.piece_vars p ·.1))
-
-  for (_,p) in tsv.sideTiles do
-    EncCNF.addClause (SquareIndex.sides size |>.map (tsv.piece_vars p ·.1))
-
-  for (_,p) in tsv.centerTiles do
-    EncCNF.addClause (SquareIndex.center size |>.map (tsv.piece_vars p ·.1))
+  for (_,squares,tiles) in squaresAndTiles do
+    /- Each square has a tile -/
+    for q in squares do
+      addClause ⟨tiles |>.map (tsv.piece_vars · q)⟩
+    
+    /- Each tile has a square -/
+    for p in tiles do
+      addClause ⟨squares |>.map (tsv.piece_vars p ·)⟩
 
   /- Eliminate mismatched square/tile types -/
-  for (_,p) in tsv.cornerTiles do
-    for (q,_) in SquareIndex.sides size do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
-    for (q,_) in SquareIndex.center size do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
+  for ((x,squares,_),(y,_,tiles)) in
+    List.product squaresAndTiles squaresAndTiles do
+    if x ≠ y then
+      for p in tiles do
+        for q in squares do
+          addClause (¬tsv.piece_vars p q)
 
-  for (_,p) in tsv.sideTiles do
-    for (q,_) in SquareIndex.corners size do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
-    for (q,_) in SquareIndex.center size do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
-
-  for (_,p) in tsv.centerTiles do
-    for (q,_) in SquareIndex.corners size do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
-    for (q,_) in SquareIndex.sides size do
-      EncCNF.addClause [.not (tsv.piece_vars p q)]
 
 /-- Constrain each diamond has exactly one color (of the right type) -/
 def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
   /- Frame (always frameColor) -/
   for d in DiamondIndex.frame size do
-    EncCNF.addClause [tsv.diamond_vars d (Color.frameColor)]
+    addClause (tsv.diamond_vars d (Color.frameColor))
     for c in Color.allColors do
       if not (Color.withBorder.isFrameColor c) then
-        EncCNF.addClause [.not (tsv.diamond_vars d c)]
+        addClause (¬tsv.diamond_vars d c)
 
   /- Border -/
   for d in DiamondIndex.border size do
-    EncCNF.addClause (Color.borderColors.map (tsv.diamond_vars d ·))
+    addClause ⟨Color.borderColors.map (tsv.diamond_vars d ·)⟩
 
     atMostOne <| Color.borderColors.map (tsv.diamond_vars d ·)
 
-    /- AMO constraint, defined pairwise -/
-    -- for c in Color.borderColors do
-    --   for c' in Color.borderColors do
-    --     if c.val < c'.val then
-    --       EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
-
     for c in Color.allColors do
       if not (Color.withBorder.isBorderColor c) then
-        EncCNF.addClause [.not (tsv.diamond_vars d c)]
+        addClause (¬tsv.diamond_vars d c)
 
   for d in DiamondIndex.center size do
-    EncCNF.addClause (Color.centerColors.map (tsv.diamond_vars d ·))
+    addClause ⟨Color.centerColors.map (tsv.diamond_vars d ·)⟩
 
     atMostOne <| Color.centerColors.map (tsv.diamond_vars d ·)
 
-    -- for c in Color.centerColors do
-    --   for c' in Color.centerColors do
-    --     if c.val < c'.val then
-    --       EncCNF.addClause [.not (tsv.diamond_vars d c), .not (tsv.diamond_vars d c')]
-
     for c in Color.allColors do
       if not (Color.withBorder.isCenterColor c) then
-        EncCNF.addClause [.not (tsv.diamond_vars d c)]
+        addClause (¬tsv.diamond_vars d c)
 
 
 /- Piece classification for essential constraints -/
@@ -192,21 +166,21 @@ private def classify (t : Tile (Color.withBorder b c))
   let y : Color.withBorder b c := ⟨y+1,sorry⟩
   let z : Color.withBorder b c := ⟨z+1,sorry⟩
   /- so much casework-/
-  if w = x ∧ x = y ∧ y = z then
+  if w = x && x = y && y = z then
     .fourSame w
-  else if w = x ∧ x = y then
+  else if w = x && x = y then
     .threeSame w z
-  else if x = y ∧ y = z then
+  else if x = y && y = z then
     .threeSame x w
-  else if y = z ∧ z = w then
+  else if y = z && z = w then
     .threeSame y x
-  else if z = w ∧ w = x then
+  else if z = w && w = x then
     .threeSame z y
-  else if w = x ∧ y = z then
+  else if w = x && y = z then
     .twoNeighborPairs w y
-  else if x = y ∧ z = w then
+  else if x = y && z = w then
     .twoNeighborPairs x z
-  else if w = y ∧ x = z then
+  else if w = y && x = z then
     .twoOppositePairs w x
   else if w = x then
     .oneNeighborPair w y z
@@ -232,129 +206,109 @@ def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : E
     | .corner u r =>
         for (q,ds) in SquareIndex.corners size do
           /- if i placed at q, then diamond1 colored u ∧ diamond2 colored r -/
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) u]
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) r]
+          addClause (¬tsv.piece_vars i q ∨ tsv.diamond_vars (ds 0) u)
+          addClause (¬tsv.piece_vars i q ∨ tsv.diamond_vars (ds 1) r)
     | .side u r d =>
         for (q,ds) in SquareIndex.sides size do
           /- if i placed at q, then diamond1 colored u ∧ diamond2 colored r ∧ diamond3 colored d -/
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) u]
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 1) r]
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 2) d]
+          addClause (¬ tsv.piece_vars i q ∨ tsv.diamond_vars (ds 0) u)
+          addClause (¬ tsv.piece_vars i q ∨ tsv.diamond_vars (ds 1) r)
+          addClause (¬ tsv.piece_vars i q ∨ tsv.diamond_vars (ds 2) d)
     | .fourSame urdl =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then all diamonds colored urdl -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds rot) urdl]
+            addClause (¬tsv.piece_vars i q ∨ tsv.diamond_vars (ds rot) urdl)
     | .threeSame urd l =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one diamond must be l -/
-          EncCNF.addClause [.not (tsv.piece_vars i q), tsv.diamond_vars (ds 0) l,
-            tsv.diamond_vars (ds 1) l, tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l]
+          addClause (¬tsv.piece_vars i q ∨ tsv.diamond_vars (ds 0) l ∨
+            tsv.diamond_vars (ds 1) l ∨ tsv.diamond_vars (ds 2) l ∨ tsv.diamond_vars (ds 3) l)
           /- and one of each opposite pair must be urd -/
           for rot in [0,1] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) urd, tsv.diamond_vars (ds (rot+2)) urd]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) urd ∨ tsv.diamond_vars (ds (rot+2)) urd)
           /- and one of each adjacent pair must be urd -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) urd, tsv.diamond_vars (ds (rot+1)) urd]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) urd ∨ tsv.diamond_vars (ds (rot+1)) urd)
     | .twoNeighborPairs ur dl =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each opposite pair must be ur -/
           for rot in [0,1] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) ur, tsv.diamond_vars (ds (rot+2)) ur]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) ur ∨ tsv.diamond_vars (ds (rot+2)) ur)
           /- and one of each opposite pair must be dl -/
           for rot in [0,1] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) dl, tsv.diamond_vars (ds (rot+2)) dl]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) dl ∨ tsv.diamond_vars (ds (rot+2)) dl)
     | .twoOppositePairs ud rl =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each adjacent pair must be ud -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) ud, tsv.diamond_vars (ds (rot+1)) ud]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) ud ∨ tsv.diamond_vars (ds (rot+1)) ud)
           /- and one of each adjacent pair must be rl -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) rl, tsv.diamond_vars (ds (rot+1)) rl]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) rl ∨ tsv.diamond_vars (ds (rot+1)) rl)
     | .oneNeighborPair ur d l =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each opposite pair must be ur -/
           for rot in [0,1] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) ur, tsv.diamond_vars (ds (rot+2)) ur]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) ur ∨ tsv.diamond_vars (ds (rot+2)) ur)
           /- and if the adjacent pair is rot, rot+1, then rot+2 must be d and rot+3 must be l -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) ur), .not (tsv.diamond_vars (ds (rot+1)) ur),
-              tsv.diamond_vars (ds (rot+2)) d]
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) ur), .not (tsv.diamond_vars (ds (rot+1)) ur),
-              tsv.diamond_vars (ds (rot+3)) l]
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) ur ∨ ¬tsv.diamond_vars (ds (rot+1)) ur
+              ∨ tsv.diamond_vars (ds (rot+2)) d)
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) ur ∨ ¬tsv.diamond_vars (ds (rot+1)) ur
+              ∨ tsv.diamond_vars (ds (rot+3)) l)
     | .oneOppositePair ud r l =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
           /- if i placed at q, then one of each adjacent pair must be ud -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              tsv.diamond_vars (ds rot) ud, tsv.diamond_vars (ds (rot+1)) ud]
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds rot) ud ∨ tsv.diamond_vars (ds (rot+1)) ud)
           /- and (if rot is r, rot+2 is l) and (if rot is l, rot+2 is r) -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) r), tsv.diamond_vars (ds (rot+2)) l]
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+2)) r]
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) r ∨ tsv.diamond_vars (ds (rot+2)) l)
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) l ∨ tsv.diamond_vars (ds (rot+2)) r)
           /- one of the diamonds must be one of the colours -/
-          EncCNF.addClause
-            [ .not (tsv.piece_vars i q)
-            , tsv.diamond_vars (ds 0) r, tsv.diamond_vars (ds 1) r
-            , tsv.diamond_vars (ds 2) r, tsv.diamond_vars (ds 3) r
-            ]
-          EncCNF.addClause
-            [ .not (tsv.piece_vars i q)
-            , tsv.diamond_vars (ds 0) l, tsv.diamond_vars (ds 1) l
-            , tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l
-            ]
+          addClause (¬tsv.piece_vars i q
+            ∨ tsv.diamond_vars (ds 0) r ∨ tsv.diamond_vars (ds 1) r
+            ∨ tsv.diamond_vars (ds 2) r ∨ tsv.diamond_vars (ds 3) r)
+          addClause (¬tsv.piece_vars i q
+            ∨ tsv.diamond_vars (ds 0) l ∨ tsv.diamond_vars (ds 1) l
+            ∨ tsv.diamond_vars (ds 2) l ∨ tsv.diamond_vars (ds 3) l)
     | .allDiff u r d l =>
       if !onlyEdge then
         for (q,ds) in SquareIndex.center size do
-          /- if i placed t q, then if rot is [u,r,d,l] then rot+1 is [r,d,l,u] -/
+          /- if i placed at q, then if rot is [u,r,d,l] then rot+1 is [r,d,l,u] -/
           for rot in [0,1,2,3] do
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) u), tsv.diamond_vars (ds (rot+1)) r]
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) r), tsv.diamond_vars (ds (rot+1)) d]
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) d), tsv.diamond_vars (ds (rot+1)) l]
-            EncCNF.addClause [.not (tsv.piece_vars i q),
-              .not (tsv.diamond_vars (ds rot) l), tsv.diamond_vars (ds (rot+1)) u]
-          /- one of the diamonds must be one of the colours -/
-          EncCNF.addClause
-            [ .not (tsv.piece_vars i q)
-            , tsv.diamond_vars (ds 0) u, tsv.diamond_vars (ds 1) u
-            , tsv.diamond_vars (ds 2) u, tsv.diamond_vars (ds 3) u
-            ]
-          EncCNF.addClause
-            [ .not (tsv.piece_vars i q)
-            , tsv.diamond_vars (ds 0) r, tsv.diamond_vars (ds 1) r
-            , tsv.diamond_vars (ds 2) r, tsv.diamond_vars (ds 3) r
-            ]
-          EncCNF.addClause
-            [ .not (tsv.piece_vars i q)
-            , tsv.diamond_vars (ds 0) d, tsv.diamond_vars (ds 1) d
-            , tsv.diamond_vars (ds 2) d, tsv.diamond_vars (ds 3) d
-            ]
-          EncCNF.addClause
-            [ .not (tsv.piece_vars i q)
-            , tsv.diamond_vars (ds 0) l, tsv.diamond_vars (ds 1) l
-            , tsv.diamond_vars (ds 2) l, tsv.diamond_vars (ds 3) l
-            ]
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) u ∨ tsv.diamond_vars (ds (rot+1)) r)
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) r ∨ tsv.diamond_vars (ds (rot+1)) d)
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) d ∨ tsv.diamond_vars (ds (rot+1)) l)
+            addClause (¬tsv.piece_vars i q
+              ∨ ¬tsv.diamond_vars (ds rot) l ∨ tsv.diamond_vars (ds (rot+1)) u)
+          /- one of the diamonds must be each of the colours -/
+          for c in [u,r,d,l] do
+            addClause (¬tsv.piece_vars i q
+              ∨ tsv.diamond_vars (ds 0) c ∨ tsv.diamond_vars (ds 1) c
+              ∨ tsv.diamond_vars (ds 2) c ∨ tsv.diamond_vars (ds 3) c)
 
 def compactEncoding (tsv : TileSetVariables size b c) (onlyEdge : Bool := false)
   : EncCNF Unit := do
@@ -385,14 +339,14 @@ def forbiddenColors (tsv : TileSetVariables size b c) : EncCNF Unit := do
           among the forbidden colors -/
       for c in forbiddenColors do
         for i in List.fins 4 do
-          EncCNF.addClause [.not (tsv.piece_vars p q), .not (tsv.diamond_vars (ds i) c)]
+          addClause (¬tsv.piece_vars p q ∨ ¬tsv.diamond_vars (ds i) c)
 
 /- Break rotational symmetry by assigning a corner to (0,0) -/
 def fixCorner (tsv : TileSetVariables size b c) : EncCNF Unit := do
   if h:size > 0 then
     for (i, _) in tsv.ts.tiles.enum.find? (·.2.isCorner) do
       if hi:_ then
-        addClause [tsv.piece_vars ⟨i, hi⟩ ⟨⟨0,h⟩,⟨0,h⟩⟩]
+        addClause (tsv.piece_vars ⟨i, hi⟩ ⟨⟨0,h⟩,⟨0,h⟩⟩)
       else panic! "woah"
 
 /- Constrain board to be the i'th corner configuration -/
@@ -409,10 +363,10 @@ def fixCorners (tsv : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := 
         | 3 => (c,d,b)
         | 4 => (d,b,c)
         | 5 => (d,c,b)
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ a.1) ⟨⟨0,h⟩,        ⟨0,h⟩⟩]
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ b.1) ⟨⟨0,h⟩,        Fin.last _ h⟩]
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ c.1) ⟨Fin.last _ h, ⟨0,h⟩⟩]
-      EncCNF.addClause [tsv.piece_vars (tsv.ts.h_ts ▸ d.1) ⟨Fin.last _ h, Fin.last _ h⟩]
+      addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ a.1) ⟨⟨0,h⟩,        ⟨0,h⟩⟩
+      addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ b.1) ⟨⟨0,h⟩,        Fin.last _ h⟩
+      addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ c.1) ⟨Fin.last _ h, ⟨0,h⟩⟩
+      addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ d.1) ⟨Fin.last _ h, Fin.last _ h⟩
     | _ =>
       panic! s!"Tileset had {corners.length} corners"
 
@@ -428,7 +382,7 @@ def colorCardConstraints (tsv : TileSetVariables size b c)
         let t := tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx]
         let var := tsv.sign_vars idx
         t.colors.filter (· = color) |>.map (fun _ => var))
-    let pos : Array Literal := Array.mk <| cVars.map (⟨·,false⟩)
+    let pos : Array Literal := Array.mk <| cVars.map (.pos)
     assert! (pos.size % 2 = 0) -- handshake lemma :)
     equalK pos (pos.size / 2)
 
@@ -485,10 +439,10 @@ def associatePolarities (ts : TileSetVariables size b c) : EncCNF Unit := do
     for ⟨i,j⟩ in SquareIndex.all size do
       if (i.val + j) % 2 = 0 then
         -- positive location
-        addClause [.not <| ts.piece_vars p ⟨i,j⟩, ts.sign_vars p]
+        addClause (¬ts.piece_vars p ⟨i,j⟩ ∨ ts.sign_vars p)
       else
         -- negative location
-        addClause [.not <| ts.piece_vars p ⟨i,j⟩, .not <| ts.sign_vars p]
+        addClause (¬ts.piece_vars p ⟨i,j⟩ ∨ ¬ts.sign_vars p)
 
 end Constraints
 

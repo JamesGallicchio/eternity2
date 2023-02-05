@@ -5,6 +5,8 @@ package eternity2 {
   precompileModules := true
 }
 
+lean_lib SolverConfig
+
 lean_lib Eternity2
 
 @[default_target]

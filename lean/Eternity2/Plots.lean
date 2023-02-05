@@ -2,6 +2,7 @@ import Eternity2.Puzzle
 
 open Eternity2
 open System
+open LeanSAT Encode
 
 
 def genTileSet (size coreColors edgeColors : Nat)
@@ -60,7 +61,7 @@ def plotData (name : String)
 def countSols (count : IO.Ref Nat)
               (output : Option ( FilePath
                                × Constraints.TileSetVariables size b c))
-              (asgn : Std.HashMap EncCNF.Var Bool)
+              (asgn : Std.HashMap Var Bool)
             : IO Unit := do
   count.modify (·+1)
   match output with
@@ -75,16 +76,16 @@ def plotSolCounts (name : String)
                   (size : Nat)
                   (encoding : {b c : Nat}
                             → TileSet size (Color.withBorder b c)
-                            → EncCNF (List EncCNF.Var))
+                            → EncCNF (List Var))
                 : IO Unit := do
-  plotData name ["sols"] size @fun b c tiles => do
+  plotData name ["sols"] size fun tiles => do
     let (blocking_vars, state) := EncCNF.new! (encoding tiles)
-    let count ← IO.mkRef 0
+    let count ←
+      Solver.ApproxModelCount.approxModelCount
+        state.toFormula
+        blocking_vars
 
-    SATSolve.allSols state (reportProgress := true) blocking_vars
-      (perItem := @countSols size b c count none)
-
-    return [toString <| ←count.get]
+    return [toString count]
 
 
 def plotSignSolCounts (size : Nat) : IO Unit := do
@@ -126,12 +127,8 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
           Constraints.colorCardConstraints tsv
           return tsv.signVarList
 
-        let count ← IO.mkRef 0
-
-        SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := @countSols size b c count none)
-
-        return ← count.get)
+        return ← Solver.ApproxModelCount.approxModelCount
+            state.toFormula blocking_vars)
 
       -- Count solutions to just puzzle constraints (and time it)
       let (soltime, puzzlesols) ← IO.timeMs (do
@@ -141,12 +138,8 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
           Constraints.fixCorner tsv
           return tsv.diamondVarList
 
-        let count ← IO.mkRef 0
-
-        SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := fun _ => count.modify (·+1))
-        
-        return ← count.get)
+        return ← Solver.ApproxModelCount.approxModelCount
+            state.toFormula blocking_vars)
 
       -- Count solutions to puzzle constraints with sign constraints (and time it)
       let (soltime_withsigns, puzzlesols') ← IO.timeMs (do
@@ -158,12 +151,8 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
           Constraints.associatePolarities tsv
           return tsv.diamondVarList
 
-        let count ← IO.mkRef 0
-
-        SATSolve.allSols state (reportProgress := true) blocking_vars
-          (perItem := @countSols size b c count none)
-
-        return ← count.get)
+        return ← Solver.ApproxModelCount.approxModelCount
+            state.toFormula blocking_vars)
 
 --      assert! (puzzlesols = puzzlesols')
 
@@ -171,31 +160,6 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
               , toString puzzlesols, toString soltime
               , toString puzzlesols', toString soltime_withsigns
               ]
-
-def findEternityEdgeSols : IO Unit := do
-  let e2 ← fetchEternity2Tiles
-  match EncCNF.new? do
-    let tsv ← Constraints.mkVars e2
-    Constraints.compactEncoding tsv (onlyEdge := true)
-    Constraints.fixCorner tsv
-    Constraints.colorCardConstraints tsv
-    Constraints.associatePolarities tsv
-    return tsv
-  with
-  | .error s =>
-    IO.println s!"Error building encoding: {s}"
-  | .ok (tsv, state) =>
-  let count ← IO.mkRef 0
-  SATSolve.allSols state (reportProgress := true) tsv.diamondVarList (varsToBlock := tsv.borderDiamondVarList)
-    (perItem := fun assn => do
-      let i ← count.modifyGet (fun ct => (ct, ct + 1))
-      let sol := SolvePuzzle.decodeDiamonds tsv assn
-      IO.FS.createDirAll "border_sols/v2/"
-      /- TODO: Better output format here -/
-      IO.FS.withFile s!"border_sols/v2/e2_border_sol_{i}.txt" .write (fun handle =>
-        handle.putStrLn <| toString <| sol.tileBoard.mapColors (·.map (toString ·) |>.getD " ")
-      )
-    )
 
 
 /- Outputs all solutions to a given tileset as solution files in `outputFolder`. -/
@@ -210,7 +174,7 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
     Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
   | .ok (tsv, enc) =>
   IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
-    enc.printAux handle.putStrLn
+    Solver.Dimacs.printEnc handle.putStrLn enc
   let counter ← IO.mkRef 0
   if parallelize then
     fun handle => do
@@ -229,10 +193,9 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
   Log.info s!"Board {name}: All solutions found"
 where
   solveAndOutput tsv enc name counter : Log IO _ := fun handle => do
-    SATSolve.allSols enc
-      (tsv.pieceVarList ++ tsv.diamondVarList)
-      tsv.diamondVarList
-      (perItem := fun assn => Log.run handle do
+    let sols ← Solver.allSolutions enc.toFormula tsv.diamondVarList
+    for assn in sols do
+      Log.run handle do
         let num ← counter.modifyGet (fun i => (i,i+1))
         Log.info s!"Board {name}: Found solution #{num}"
         match SolvePuzzle.decodePieces tsv assn with
@@ -242,7 +205,6 @@ where
         let file := outputFolder / s!"{name}_sol{num}.sol"
         sol.writeSolution file
         Log.info s!"Board {name}: Wrote solution #{num} to {file}"
-      )
 
 def genAndSolveBoards (outputDir : FilePath)
                       (size colors count : Nat)
@@ -297,16 +259,14 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
           return true
         | .ok (tsv, enc) =>
         let startTime ← IO.monoMsNow
-        let timedOut ← IO.mkRef false
-        let _ ← SolvePuzzle.solveAll enc tsv (termCond := some do
-          let willTimeOut := (←IO.monoMsNow) > startTime + timeout
-          if willTimeOut then
-            timedOut.set true
-          return willTimeOut)        
+        let timedOut :=
+          match ← (IO.asTaskTimeout timeout <| SolvePuzzle.solveAll enc tsv) with
+          | .ok _ => false
+          | .error () => true      
         let runtime := (←IO.monoMsNow) - startTime
         IO.println s!"{size},{colors},{iter},{runtime}"
         (←IO.getStdout).flush
-        return ←timedOut.get
+        return timedOut
 
       -- If all boards in this category time out, stop decreasing
       if timedOut.all (·) then
