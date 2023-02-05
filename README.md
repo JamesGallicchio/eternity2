@@ -12,14 +12,12 @@ The main tool we've been using for experiments is built in [Lean 4](https://gith
 which needs to be installed in order to build the binary (follow the installation
 intructions in the linked repo).
 
-Once Lean is installed:
+Once Lean is installed, from this repo's lean/ subfolder execute
 ```
-$ cd lean
-$ lake run setup      # clones and builds CaDiCaL source in lean/cadical/
-$ lake build          # downloads all dependencies for the Lean source,
-                      # and builds the binary
-$ cp build/bin/eternity2 ../eternity2   # this is the command-line tool :)
+lake build
+cp build/bin/eternity2 ../eternity2  # (or wherever you want it)
 ```
+to download the code dependencies and build the CLI tool.
 
 ## Usage
 
