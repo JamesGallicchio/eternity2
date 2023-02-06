@@ -12,6 +12,11 @@ instance [BEq c] : BEq (TileSet s c) := ⟨(·.tiles == ·.tiles)⟩
 
 namespace TileSet
 
+instance [BEq color] [Inhabited color] : Inhabited (TileSet size color) where
+  default := {
+    tiles := List.replicate (size * size) default
+    h_ts := by simp
+  }
 
 def toFileFormat (ts : TileSet size (Color.withBorder b c)) : String :=
   s!"c {size}x{size} board with {b} border colors, {c} center colors\n" ++
