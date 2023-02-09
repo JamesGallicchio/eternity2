@@ -169,10 +169,7 @@ def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
       (parallelize : Bool := false)
       : Log TaskIO Unit
   := do
-  match EncCNF.new? <| encodePuzzle ts es with
-  | .error s =>
-    Log.error s!"outputAllSols aborting on board {name}\nfailed to encode tileset. error:\n{s}"
-  | .ok (tsv, enc) =>
+  let (tsv, enc) := EncCNF.new! <| encodePuzzle ts es
   IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
     Solver.Dimacs.printEnc handle.putStrLn enc
   let counter ← IO.mkRef 0
@@ -253,11 +250,7 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
       let timedOut ← TaskIO.parTasks [0:10] fun iter => do
         let ⟨_,_,_,ts⟩ ← TileSet.fromFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
-        match EncCNF.new? <| encodePuzzle ts es with
-        | .error s =>
-          IO.println s!"Encoding board {size}/{colors}/board_{iter}.puz failed: {s}"
-          return true
-        | .ok (tsv, enc) =>
+        let (tsv, enc) := EncCNF.new! <| encodePuzzle ts es
         let startTime ← IO.monoMsNow
         let timedOut :=
           match ← (IO.asTaskTimeout timeout <| SolvePuzzle.solveAll enc tsv) with
@@ -274,94 +267,39 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
       else
         colors := colors - 1
 
-def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c) (iters timeout : Nat) : IO (List (SquareIndex size × SquareIndex size × Nat × Nat)) := do
-  let signsols ← (do
-    let mut signsols ← IO.mkRef []
-    for i in [0:iters] do
-      let enc ← enc.scramble
-      let start ← IO.monoMsNow
-      let count ← IO.mkRef 0
-      let () ← SATSolve.allSols enc tsv.signVarList
-        (termCond := some (do
-          let now := (← IO.monoMsNow)
-          let doTimeout := (start + timeout) < now
-          if doTimeout then
-            IO.println s!"timing out iteration {i} after finding {←count.get} sols"
-            (←IO.getStdout).flush
-          return doTimeout
-          ))
-        (perItem := fun assn => do
-          count.modify (· + 1)
-          signsols.modify (assn :: ·))
-    signsols.get)
-
-  let corrs :=
-    SquareIndex.all size |>.bind fun p1 =>
-    SquareIndex.all size |>.bind fun p2 =>
-    let idx1 := SquareIndex.toFin p1
-    let idx2 := SquareIndex.toFin p2
-    if idx1 ≥ idx2 then []
-    else [
-      let sameCount :=
-        signsols.countp (fun assn =>
-          assn.find? (tsv.sign_vars idx1) == assn.find? (tsv.sign_vars idx2))
-      let diffCount :=
-        signsols.countp (fun assn =>
-          assn.find? (tsv.sign_vars idx1) != assn.find? (tsv.sign_vars idx2))
-      (p1, p2, sameCount, diffCount)
-    ]
+open Notation in -- nice notation for encodings
+def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c)
+  : IO (List (Fin (size*size) × Fin (size*size) × Nat × Nat)) := do
+  let mut corrs := []
+  for p1 in List.fins (size*size) do
+    for p2 in List.fins (size*size) do
+      if p1 ≥ p2 then
+        continue
+      let signVars := tsv.signVarList
+      let ((),sameEnc) := EncCNF.run! enc do
+        EncCNF.addClause (¬tsv.sign_vars p1 ∨ tsv.sign_vars p2)
+        EncCNF.addClause (¬tsv.sign_vars p2 ∨ tsv.sign_vars p1)
+      let ((), diffEnc) := EncCNF.run! enc do
+        EncCNF.addClause (tsv.sign_vars p1 ∨ tsv.sign_vars p2)
+        EncCNF.addClause (¬tsv.sign_vars p1 ∨ ¬tsv.sign_vars p2)
+      let same_count ← Solver.ApproxModelCount.approxModelCount sameEnc.toFormula signVars
+      let diff_count ← Solver.ApproxModelCount.approxModelCount diffEnc.toFormula signVars
+      corrs := (p1,p2,same_count.toNat,diff_count.toNat) :: corrs
   return corrs
 
-partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (iters timeout : Nat) : IO Unit := do
-  match EncCNF.new? do
+partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (sols : List (BoardSol ts)) : IO Unit := do
+  let (tsv, enc) := EncCNF.new! do
     let tsv ← Constraints.mkVars ts
     Constraints.colorCardConstraints tsv
     Constraints.signCardConstraints tsv
-    if h:0 < size*size then EncCNF.addClause [tsv.sign_vars ⟨0,h⟩]
+    if h:0 < size*size then EncCNF.addClause (tsv.sign_vars ⟨0,h⟩)
     return tsv
-  with
-  | .error s => panic! s!"failed to encode: {s}"
-  | .ok (tsv, enc) =>
+
   let mut enc := enc
-  let boardSols ← (do
-    let mut boardSols ← IO.mkRef []
-    match EncCNF.new? <| encodePuzzle ts {} with
-    | .error s =>
-      IO.println s!"aborting, failed to encode tileset. error:\n{s}"
-    | .ok (tsv, enc) =>
-      SATSolve.allSols enc
-        (tsv.pieceVarList ++ tsv.diamondVarList)
-        tsv.diamondVarList
-        (perItem := fun assn => do
-          let poses : Fin size → Fin size → SquareIndex size := fun i j =>
-              let idx1 := SquareIndex.toFin ⟨i,j⟩
-              match
-                List.find?
-                  (assn.find! <| tsv.piece_vars idx1 ·)
-                  (SquareIndex.all size)
-              with
-              | some x => x
-              | none =>
-                letI : Inhabited (SquareIndex size) := (match size, i with | 0, i => i.elim0 | _+1, _ => ⟨⟨0,0⟩⟩)
-                panic! "piece not placed?"
-          boardSols.modify (poses :: ·)
-        )
-    return ←boardSols.get)
-
-  IO.println ts
-  IO.println ""
-
-  for sol in boardSols do
-    for i in List.fins _ do
-      for j in List.fins _ do
-        IO.print (sol i j)
-        IO.print " "
-      IO.println ""
-    IO.println ""
 
   let mut assigned := []
   while true do
-    let corrs ← getCorrs enc tsv iters timeout
+    let corrs ← getCorrs enc tsv
     let guess := corrs.foldl (fun acc (p1,p2,s,d) =>
       match acc with
       | none =>
@@ -379,26 +317,22 @@ partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (iters timeout 
     | some (p1,p2, same,diff) =>
       let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
       let actSame :=
-        boardSols.countp (fun placement =>
-            let q1 := placement p1.1 p1.2
-            let q2 := placement p2.1 p2.2
+        sols.countp (fun sol =>
+            let (q1,_) := sol.pieceIdx p1
+            let (q2,_) := sol.pieceIdx p2
             (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 0)
-      let actDiff :=
-        boardSols.countp (fun placement =>
-            let q1 := placement p1.1 p1.2
-            let q2 := placement p2.1 p2.2
-            (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 1)
+      let actDiff := sols.length - actSame
 
-      let (p1v, p2v) := (tsv.sign_vars p1.toFin, tsv.sign_vars p2.toFin)
+      let (p1v, p2v) := (tsv.sign_vars p1, tsv.sign_vars p2)
       IO.println s!"({assigned.length})\t{p1} {p2}: {same}, {diff} ({pct*100}%); actual {actSame}, {actDiff}"
       if same > diff then
         IO.println s!"\tAssigning {p1}, {p2} to be the same.\t(matches {actSame} sols)"
         enc := (·.2) <| EncCNF.run! enc do
-          EncCNF.addClause [.not p1v, p2v]
-          EncCNF.addClause [p1v, .not p2v]
+          EncCNF.addClause ⟨[.not p1v, p2v]⟩ 
+          EncCNF.addClause ⟨[p1v, .not p2v]⟩ 
       else
         IO.println s!"\tAssigning {p1}, {p2} to be different.\t(matches {actDiff} sols)"
         enc := (·.2) <| EncCNF.run! enc do
-          EncCNF.addClause [p1v, p2v]
-          EncCNF.addClause [.not p1v, .not p2v]
+          EncCNF.addClause ⟨[p1v, p2v]⟩
+          EncCNF.addClause ⟨[.not p1v, .not p2v]⟩
       assigned := (p1, p2) :: assigned

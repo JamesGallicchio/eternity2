@@ -166,26 +166,27 @@ def testSolveTimesCmd := `[Cli|
 ]
 
 def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
-  let size : Nat := p.flag! "size" |>.as! Nat
-  let iters : Nat := p.flag! "iters" |>.as! Nat
-  let timeout : Nat := p.flag! "timeout" |>.as! Nat
+  let tileset : String ← IO.ofExcept <|
+    p.flag? "tileset" |>.map (·.as! String) |>.expectSome fun () => "--tileset <file> argument missing"
+  let sols : String ← IO.ofExcept <|
+    p.flag? "sols" |>.map (·.as! String) |>.expectSome fun () => "--sols <dir> argument missing" 
 
-  let coreColors := size+1
-  let edgeColors := Nat.sqrt size + 1
-  let dboard ← GenBoard.generate size coreColors edgeColors
-  let board := dboard.tileBoard
+  let ⟨_,_,_,ts⟩ ← TileSet.fromFile tileset
+  let sols ←
+    (← System.FilePath.walkDir sols (fun f => pure <| f.extension.isEqSome "sol"))
+    |>.mapM (fun f => BoardSol.readSolution f ts)
 
-  findCorrs board.toBoardSol.fst (iters := iters) (timeout := timeout)
+  findCorrs ts sols.toList
   return 0
 
 def findSignCorrsCmd := `[Cli|
   "find-sign-corrs" VIA runFindSignCorrsCmd; ["0.0.1"]
-  "Generate random board and find correlations between sign solutions on that board."
+  "Find correlations between sign solutions on a board."
 
   FLAGS:
-    size : Nat; "How big of a board to generate"
-    iters : Nat; "Number of CNF scrambles to find solutions for"
-    timeout : Nat; "Timeout (in ms) for each CNF scramble"
+    tileset : String; "File containing the tileset"
+    sols : String; "Directory with solution output"
+    logfile : String; "File for detailed logs"
 ]
 
 def mainCmd := `[Cli|

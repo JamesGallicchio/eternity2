@@ -46,3 +46,37 @@ instance [Monad m] [Monad n] [MonadLift m n] : MonadLift (Log m) (Log n) where
   monadLift mla := fun handle => liftM <| Log.run handle mla
 
 end Log
+
+
+def LeanSAT.Encode.EncCNF.State.cleanup : State → State
+| {nextVar, clauses, names, varCtx} =>
+  let usedVars :=
+    clauses.foldl
+      (fun set clause =>
+        clause.lits.foldl
+          (fun set lit =>
+            set.insert lit.var ())
+          set)
+      (Std.HashMap.empty)
+
+  let (varRemap, namesRemap, nextVarRemap) := Id.run do
+    let mut varRemap : Std.HashMap Var Var := .empty
+    let mut namesRemap : Std.HashMap Var String := .empty
+    let mut nextVarRemap := 0
+    for i in [0:nextVar] do
+      if usedVars.contains i then
+        varRemap := varRemap.insert i nextVarRemap
+        if names.contains i then
+          namesRemap := namesRemap.insert nextVarRemap (names.find! i)
+        nextVarRemap := nextVarRemap.succ
+    return (varRemap, namesRemap, nextVarRemap)
+
+  let clausesRemap := clauses.map (⟨·.lits.map (fun
+    | .pos v => .pos <| varRemap.find! v
+    | .neg v => .neg <| varRemap.find! v
+    )⟩)
+
+  { nextVar := nextVarRemap
+    names := namesRemap
+    clauses := clausesRemap
+    varCtx := varCtx}
