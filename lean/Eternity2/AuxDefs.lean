@@ -92,3 +92,21 @@ def List.attach (l : List α) : List { x // x ∈ l } :=
   induction L with
   | nil => simp [pmap]
   | cons x xs ih => simp [pmap, ih]
+
+def RandomM (τ) := ∀ g [RandomGen g], StateM g τ
+
+instance [RandomGen g] : Monad RandomM where
+  pure a    := λ _ => pure a
+  bind r f  := λ G => bind (r G) (fun a => f a G)
+
+def RandomM.run [RandomGen G] (g : G) (r : RandomM τ) : τ × G :=
+  StateT.run (r G) g
+
+def RandomM.randFin (n : Nat) : n > 0 → RandomM (Fin n) :=
+  λ hn G R g =>
+    let (res, g) := @randNat G R g 0 n
+    if h : res < n then
+      (⟨res, h⟩, g)
+    else
+      have : Inhabited (Fin n × G) := ⟨⟨⟨0,hn⟩, g⟩⟩
+      panic! s!"randFin wrong: n={n}, res={res}"

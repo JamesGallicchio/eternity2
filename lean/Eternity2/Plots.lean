@@ -1,72 +1,50 @@
 import Eternity2.Plots.BoardSuite
+import Eternity2.Plots.GenRandom
+import Eternity2.Puzzle.SolvePuzzle
+import SolverConfig
 
 namespace Eternity2
 
 open System LeanSAT Encode
 
-/-
-Generates boards of a specific size with a variety of colors and outputs
-and computes some metric with `calcData`
- -/
+/- Runs `calcData` on the given board suite, outputting the
+  results as CSV in the file `results`. -/
 def plotData (name : String)
              (colLabels : List String)
-             (size : Nat)
-             (calcData : {s : _}
+             (suite : FilePath)
+             (results : FilePath)
+             (calcData : {size s : _}
                        → TileSet size (Tile <| Color.WithBorder s)
                        → IO (List String))
            : IO Unit := do
-  let plotsDir : FilePath := "./plots/"
-  let outputFile : FilePath := plotsDir / s!"output_{name}_{size}.csv"
-  let boardsDir : FilePath := plotsDir / "board"
+  -- load the board suite
+  let suite ← BoardSuite.ofDirectory suite
 
-  IO.FS.createDirAll boardsDir
-
-  IO.FS.withFile outputFile .write (fun handle =>
-   handle.putStrLn
+  -- open results
+  IO.FS.withFile results .write fun results => do
+  
+  -- print header
+  results.putStrLn name
+  results.putStrLn
      <| String.intercalate ","
-     <| ["title", "size", "colors"] ++ colLabels
-  )
-  let maxColors := 7
-  let maxRuns := 10
-  TaskIO.wait <| TaskIO.parUnit [0:maxColors] fun i => do
-    let colors := size + maxColors - i - 2
-    TaskIO.parTasksUnit [0:maxRuns] fun j => do
-      let s : Color.WithBorder.Settings :=
-        ⟨List.range colors, List.range (size.sqrt + 1)⟩
-      let tiles ← genTileSet size s
-      let boardTitle := s!"{size}_{colors}_{j}"
+     <| ["title", "size", "colors (center)", "colors (border)"] ++ colLabels
 
-      IO.println s!"Board: {boardTitle}"
+  -- run calcData in parallel across boards
+  TaskIO.wait <| TaskIO.parTasksUnit suite.boards fun board => do
+    let data ← calcData board.tiles
 
-      let data ← calcData tiles
+    results.putStrLn
+      <| String.intercalate ","
+      <| [board.path.toString, toString board.size,
+          toString board.colors.center, toString board.colors.border]
+          ++ data
 
-      IO.FS.withFile outputFile .append (fun handle => do
-        handle.putStrLn
-          <| String.intercalate ","
-          <| [boardTitle, toString size, toString colors] ++ data
-      )
-
-def countSols (count : IO.Ref Nat)
-              (output : Option ( FilePath
-                               × Constraints.TileSetVariables size s))
-              (asgn : Std.HashMap Var Bool)
-            : IO Unit := do
-  count.modify (·+1)
-  match output with
-  | some (file, tsv) => (
-    match SolvePuzzle.decodeSol tsv asgn with
-    | .ok sol => sol.writeSolution file
-    | .error s => panic! s
-  )
-  | none => return
-
-def plotSolCounts (name : String)
-                  (size : Nat)
-                  (encoding : {b c : Nat}
-                            → TileSet size (Tile <| Color.withBorder b c)
+def plotSolCounts (name suite results)
+                  (encoding : {size s : _}
+                            → TileSet size (Tile <| Color.WithBorder s)
                             → EncCNF (List Var))
-                : IO Unit := do
-  plotData name ["sols"] size fun tiles => do
+                := show IO _ from do
+  plotData name ["sol#"] suite results fun tiles => do
     let (blocking_vars, state) := EncCNF.new! (encoding tiles)
     let count ←
       Solver.ApproxModelCount.approxModelCount
@@ -76,14 +54,14 @@ def plotSolCounts (name : String)
     return [toString count]
 
 
-def plotSignSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "sign" size fun ts => do
+def plotSignSolCounts (suite output) := show IO _ from do
+  plotSolCounts "sign" suite output fun ts => do
     let tsv ← Constraints.mkVars ts
     Constraints.colorCardConstraints tsv
     return tsv.signVarList
 
-def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "edgesign" size fun ts => do
+def plotEdgeSignSolCounts (suite output) := show IO _ from do
+  plotSolCounts "edgesign" suite output fun ts => do
     let tsv ← Constraints.mkVars ts
     Constraints.colorCardConstraints tsv
     return List.fins _ |>.filterMap (fun i =>
@@ -91,23 +69,26 @@ def plotEdgeSignSolCounts (size : Nat) : IO Unit := do
       then some (tsv.sign_vars i)
       else none)
 
-def plotPuzzleSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "puzzle" size fun ts => do
+def plotPuzzleSolCounts (suite output) := show IO _ from do
+  plotSolCounts "puzzle" suite output fun ts => do
     let tsv ← Constraints.mkVars ts
     Constraints.compactEncoding tsv false
     Constraints.fixCorner tsv
     return tsv.diamondVarList
 
-def plotEdgePuzzleSolCounts (size : Nat) : IO Unit := do
-  plotSolCounts "edgepuzzle" size fun ts => do
+def plotEdgePuzzleSolCounts (suite output) := show IO _ from do
+  plotSolCounts "edgepuzzle" suite output fun ts => do
     let tsv ← Constraints.mkVars ts
     Constraints.compactEncoding tsv (onlyEdge := true)
     Constraints.fixCorner tsv
     return tsv.borderDiamondVarList
 
-def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
-  plotData "corr_sign_puzzle_timed" ["signsols","puzzlesols","soltime","puzzlesols_withsigns","soltime_withsigns"]
-    size @fun b c ts => do
+def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
+  plotData
+    "corr_sign_puzzle_timed"
+    ["signsols","puzzlesols","soltime","puzzlesols_withsigns","soltime_withsigns"]
+    suite output
+    fun ts => do
       -- Count solutions to just polarity constraints
       let signsols ← (do
         let (blocking_vars, state) := EncCNF.new! do
@@ -149,15 +130,14 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
               , toString puzzlesols', toString soltime_withsigns
               ]
 
-
 /- Outputs all solutions to a given tileset as solution files in `outputFolder`. -/
-def outputAllSols (name : String) (ts : TileSet size (Tile <| Color.withBorder b c))
+def outputAllSols (name : String) (ts : TileSet size (Tile <| Color.WithBorder s))
       (outputFolder : FilePath)
-      (es : EncodingSettings)
+      (es : SolvePuzzle.EncodingSettings)
       (parallelize : Bool := false)
       : Log TaskIO Unit
   := do
-  let (tsv, enc) := EncCNF.new! <| encodePuzzle ts es
+  let (tsv, enc) := EncCNF.new! <| SolvePuzzle.encodePuzzle ts es
   IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
     Solver.Dimacs.printEnc handle.putStrLn enc
   let counter ← IO.mkRef 0
@@ -183,44 +163,24 @@ where
       Log.run handle do
         let num ← counter.modifyGet (fun i => (i,i+1))
         Log.info s!"Board {name}: Found solution #{num}"
-        match SolvePuzzle.decodePieces tsv assn with
+        match SolvePuzzle.decodeSol tsv assn with
         | .error s =>
           Log.error s!"Failed to decode board {name} solution #{num}: {s}"
         | .ok sol =>
         let file := outputFolder / s!"{name}_sol{num}.sol"
-        sol.writeSolution file
+        FileFormat.BoardSol.toFile file sol
         Log.info s!"Board {name}: Wrote solution #{num} to {file}"
-
-def genAndSolveBoards (outputDir : FilePath)
-                      (size colors count : Nat)
-    : Log TaskIO Unit := do
-  Log.info s!"Output directory: {outputDir}"
-  fun handle => do
-  TaskIO.parUnit [0:count] fun rep => do
-    Log.run handle do
-    let name := s!"tiles_{size}_{colors}__{rep}"
-    Log.info s!"Generating tile set {name}"
-    let ts ← genTileSet size colors (Nat.sqrt size + 1)
-    let file := outputDir / s!"{name}.tiles"
-    Log.info s!"Generated tile set {name}"
-    .toFile file
-    let solDir := outputDir / name
-    IO.FS.createDir solDir
-    Log.info s!"Finding solutions to {name}"
-    outputAllSols name ts solDir (parallelize := true) {}
-
-
 
 
 def genBoardSuite (output : FilePath) : IO Unit := do
   for size in [4:17] do
     IO.FS.createDir (output / s!"{size}")
-    for colors in [size+1:101] do
+    for colors in [size+1:61] do
       IO.FS.createDir (output / s!"{size}" / s!"{colors}")
-      for iter in [0:10] do
-        let b ← GenBoard.generate size colors (Nat.sqrt size + 1)
-        let t := DiamondBoard.tileBoard b
-        let ⟨ts,b⟩ ← t.toBoardSol.2.scramble
+      for iter in [0:20] do
+        let b ← GenRandom.board size ⟨List.range colors, List.range (Nat.sqrt size + 1)⟩
+        let t := b.tileBoard
+        let ⟨ts,b⟩ ← (BoardSol.ofTileBoard t).2.scramble
         IO.FS.createDir (output / s!"{size}" / s!"{colors}" / s!"board_{iter}")
         b.writeSolution (output / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
         ts.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")

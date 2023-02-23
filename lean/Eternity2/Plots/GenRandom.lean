@@ -31,21 +31,22 @@ private def blankBoard (size : Nat) : DiamondBoard size (Option (Color.WithBorde
 
 /-- `size`x`size` board with colors assigned randomly. -/
 def board (size : Nat) (s)
-  : IO (DiamondBoard size (Color.WithBorder s)) := do
-  attempt 1000
+  : RandomM (Except String <| DiamondBoard size (Color.WithBorder s)) := do
+  let mut attempts := 0
+  while attempts < 1000 do
+    match ← attempt () with
+    | .ok a => return .ok a
+    | .error _ => continue
+  return .error s!"ran out of attempts when generating board of size {size}"
 where
-  attempt (attempts : Nat) : IO _ := do
-    match attempts with
-    | 0 =>
-      throw <| IO.Error.timeExpired 0 "too many attempts taken to generate board"
-    | attempts+1 =>
-
+  attempt (u : Unit) : ExceptT String RandomM
+                        (DiamondBoard size (Color.WithBorder s)) := do
     let mut a := blankBoard size
     let mut indices := DiamondIndex.border size ++ DiamondIndex.center size
 
     while !indices.isEmpty do
       /- Pick random index from indices -/
-      let i' ← randFin indices.length sorry
+      let i' ← RandomM.randFin indices.length sorry
       let i := indices[i']
       indices := indices.removeNth i'
 
@@ -55,7 +56,7 @@ where
 
       /- Pick a color that doesn't violate uniqueness constraint -/
       while !colors.isEmpty do
-        let c' ← randFin colors.length sorry
+        let c' ← RandomM.randFin colors.length sorry
         let c := colors[c']
         colors := colors.removeNth c'
 
@@ -66,7 +67,7 @@ where
 
       if colors.isEmpty then
         -- failed to find a color :(
-        return ← attempt attempts
+        throw "failed to find color"
       else
         -- got the color :)
         continue

@@ -7,6 +7,7 @@ open System
 namespace Eternity2
 
 structure SolvedBoard where
+  path : FilePath
   size : Nat
   colors : Color.WithBorder.Settings
   tiles : TileSet size (Tile <| Color.WithBorder colors)
@@ -34,5 +35,5 @@ def BoardSuite.ofDirectory (path : FilePath) : IO BoardSuite := do
     -- check whether `done` file is present in directory (which indicates all solutions were found)
     let done ← (file.withFileName "done").pathExists
 
-    return ⟨size,colors,ts,sols,done⟩)
+    return ⟨file,size,colors,ts,sols,done⟩)
   return ⟨boards⟩
