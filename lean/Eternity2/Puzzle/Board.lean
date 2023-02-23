@@ -250,54 +250,57 @@ end DiamondIndex
 
 namespace Color
 
-def withBorder (borderColors centerColors : Nat) :=
-  Fin (borderColors + centerColors + 1)
+structure WithBorder.Settings where
+  border : List Nat
+  center : List Nat
 
-instance : DecidableEq (withBorder b c) := show DecidableEq (Fin _) from inferInstance
-instance : Inhabited (withBorder b c) where default := ⟨0, Nat.zero_lt_succ _⟩
+def WithBorder.Settings.size (s : WithBorder.Settings) :=
+  1 + s.border.length + s.center.length
 
-def frameColor : withBorder b c := ⟨0, by simp [withBorder]; exact Nat.zero_lt_succ _⟩
-def borderColor (i : Fin b) : withBorder b c := ⟨i.val+1, by
-  apply Nat.succ_le_succ
-  simp
-  apply Nat.le_trans _ (Nat.le_add_right _ _)
-  exact i.isLt⟩
-def centerColor (i : Fin c) : withBorder b c := ⟨b+i.val+1, by
-  apply Nat.succ_le_succ
-  simp
-  rw [Nat.add_assoc]
-  apply Nat.add_le_add_left
-  exact i.isLt⟩
+inductive WithBorder (s : WithBorder.Settings)
+| frame
+| border (n : Nat) (h : n ∈ s.border)
+| center (n : Nat) (h : n ∈ s.center)
+deriving DecidableEq, Inhabited, Hashable
 
-def withBorder.isFrameColor : withBorder b c → Bool
-| ⟨x,_⟩ => x == 0
-def withBorder.isBorderColor : withBorder b c → Bool
-| ⟨x,_⟩ => 1 ≤ x && x < b+1
-def withBorder.isCenterColor : withBorder b c → Bool
-| ⟨x,_⟩ => b+1 ≤ x
+def WithBorder.isFrame : WithBorder s → Bool
+| frame => true
+| _ => false
+def WithBorder.isBorder : WithBorder s → Bool
+| border _ _ => true
+| _ => false
+def WithBorder.isCenter : WithBorder s → Bool
+| center _ _ => true
+| _ => false
 
-def borderColors : List (withBorder b c) :=
-  List.fins b |>.map borderColor
+def borderColors : List (WithBorder s) := s.border.pmap (fun x h => .border x h) (λ _ => id)
+def centerColors : List (WithBorder s) := s.center.pmap (fun x h => .center x h) (λ _ => id)
 
-def centerColors : List (withBorder b c) :=
-  List.fins c |>.map centerColor
+def allColors : List (WithBorder s) := .frame :: (borderColors ++ centerColors)
 
-def allColors : List (withBorder b c) :=
-  List.fins (b + c + 1)
+instance {s : WithBorder.Settings} : Inhabited (Fin s.size) where
+  default := ⟨0, by simp [WithBorder.Settings.size, Nat.one_add, Nat.succ_add]; apply Nat.zero_lt_succ⟩
 
-instance : ToString (withBorder b c) where
+def WithBorder.Settings.toMap (s : WithBorder.Settings) : Std.HashMap (WithBorder s) (Fin s.size) :=
+  Id.run do
+    let mut acc := Std.HashMap.empty
+    acc := acc.insert .frame ⟨0, by simp [size, Nat.one_add, Nat.succ_add]; apply Nat.zero_lt_succ⟩
+    for (idx,x) in borderColors.mapIdx (fun idx x => (idx,x)) do
+      have : idx < borderColors.length := sorry
+      acc := acc.insert x ⟨1+idx, by simp [size, Nat.succ_add]; apply Nat.succ_lt_succ; apply Nat.lt_add_right; simp [borderColors] at this; exact this⟩
+    return acc
+
+instance : ToString (WithBorder s) where
   toString
-  | ⟨i,_⟩ =>
+  | .frame => "■"
+  | .border i _
+  | .center i _ =>
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"[i]?
-    |>.getD '*'
-    |> (String.mk [·])
+    |>.map (String.mk [·])
+    |>.getD ("`{toString i}`")
 
 end Color
 
-
-structure Tile (color : Type u) where
-  (up right down left : color)
-deriving BEq, Inhabited
 
 inductive Sign
 | plus  : Sign
@@ -308,20 +311,27 @@ def Sign.toString : Sign → String
 | minus => "-"
 instance : ToString Sign := ⟨Sign.toString⟩
 
-structure SignedTile (color : Type u) extends Tile color where
-  sign : Sign
+structure Tile (color : Type u) where
+  (up right down left : color)
+  sign : Option Sign
+deriving Inhabited
 
 namespace Tile
 
 def toString [ToString c] (tile : Tile c) :=
-  s!"┌{tile.up}┐\n{tile.left} {tile.right}\n└{tile.down}┘"
+  s!"┌{tile.up}┐\n{tile.left}{
+    match tile.sign with
+    | none => ' '
+    | some .plus => '+'
+    | some .minus => '-'
+    }{tile.right}\n└{tile.down}┘"
 
 instance [ToString c] : ToString (Tile c) where
   toString := toString
 
 def rotl : Tile c → Tile c
-| {up,right,down,left} =>
-  {up := right, right := down, down := left, left := up}
+| {up,right,down,left,sign} =>
+  {up := right, right := down, down := left, left := up, sign}
 
 def rotln (n : Nat) : Tile c → Tile c := Function.iterate rotl n
 
@@ -331,43 +341,68 @@ def numRotations [BEq c] (tile1 tile2 : Tile c) : Option (Fin 4) :=
   if rotate 2 then some 2 else
   if rotate 3 then some 3 else
   none
-where rotate n := rotln n tile2 == tile1
+where rotate n :=
+  let tile2 := rotln n tile2
+  tile1.up    == tile2.up     &&
+  tile1.right == tile2.right  &&
+  tile1.down  == tile2.down   &&
+  tile1.left  == tile2.left
 
 def eq [BEq c] (tile1 tile2 : Tile c) :=
   numRotations tile1 tile2 |>.isSome
 
+instance [BEq c] : BEq (Tile c) := ⟨eq⟩
+
 def colors : Tile c → List c
-| {up, right, down, left} => [up,right,down,left]
+| {up, right, down, left, sign := _} => [up,right,down,left]
 
 def hasColor [BEq c] (tile : Tile c) (color : c) : Bool :=
   tile.colors.contains color
 
-def isCorner (tile : Tile (Color.withBorder b c)) : Bool :=
-  rotate 0 || rotate 1 || rotate 2 || rotate 3
-where rotate n :=
-  let t := rotln n tile
-  t.up.isFrameColor && t.right.isFrameColor &&
-  t.down.isBorderColor && t.left.isBorderColor
+inductive ClassifyRes (frame : c) (tile : Tile c)
+| corner (u r)     (h : ¬(u = frame) ∧ ¬(r = frame))
+| side   (u r d)   (h : ¬(u = frame) ∧ ¬(r = frame) ∧ ¬(d = frame))
+| center (u r d l) (h : ¬(u = frame) ∧ ¬(r = frame) ∧ ¬(d = frame) ∧ ¬(l = frame))
 
-def isSide (tile : Tile (Color.withBorder b c)) : Bool :=
-  rotate 0 || rotate 1 || rotate 2 || rotate 3
-where rotate n :=
-  let t := rotln n tile
-  t.up.isFrameColor && t.right.isBorderColor &&
-  t.down.isCenterColor && t.left.isBorderColor
+def classifyGen [DecidableEq c] (f : c) (t : Tile c) : Option (Σ' n, ClassifyRes f (rotln n t)) :=
+  aux 0 |>.orElse fun () => aux 1 |>.orElse fun () => aux 2 |>.orElse fun () => aux 3
+where aux (n : Nat) : Option (Σ' n, ClassifyRes f (rotln n t)) :=
+  match t.rotln n with
+  | {up, right, down, left, sign := _} =>
+  if h : ¬(up = f) ∧ ¬(right = f) ∧ down = f ∧ left = f then
+    some ⟨n, .corner up right (by simp [*])⟩
+  else if h : ¬(up = f) ∧ ¬(right = f) ∧ ¬(down = f) ∧ left = f then
+    some ⟨n, .side up right down (by simp [*])⟩
+  else if h : ¬(up = f) ∧ ¬(right = f) ∧ ¬(down = f) ∧ ¬(left = f) then
+    some ⟨n, .center up right down left (by simp [*])⟩
+  else none
 
-def isCenter (t : Tile (Color.withBorder b c)) : Bool :=
-  t.up.isCenterColor && t.right.isCenterColor &&
-  t.down.isCenterColor && t.left.isCenterColor
+def classify {s} := classifyGen (@Color.WithBorder.frame s)
 
-def validate (t : Tile (Color.withBorder b c)) : Bool :=
-  t.isCorner || t.isSide || t.isCenter
+def isCorner (tile : Tile (Color.WithBorder s)) : Bool :=
+  match classify tile with
+  | .some ⟨_, .corner _ _ _⟩ => true
+  | _ => false 
+
+def isSide (tile : Tile (Color.WithBorder s)) : Bool :=
+  match classify tile with
+  | .some ⟨_, .side _ _ _ _⟩ => true
+  | _ => false 
+
+def isCenter (tile : Tile (Color.WithBorder s)) : Bool :=
+  match classify tile with
+  | .some ⟨_, .center _ _ _ _ _⟩ => true
+  | _ => false 
+
+def validate (tile : Tile (Color.WithBorder s)) : Bool :=
+  (classify tile).isSome
 
 def map (f : c → c') : Tile c → Tile c'
-| {up, right, down, left} =>
-  {up := f up, right := f right, down := f down, left := f left}
+| {up, right, down, left, sign} =>
+  {up := f up, right := f right, down := f down, left := f left, sign}
 
 end Tile
+
 
 structure TileBoard (size : Nat) (color : Type u) where
   board : Array (Array (Tile color))
@@ -414,6 +449,7 @@ def diamond_to_tile (dboard : DiamondBoard size c) (row col : Fin size) : Tile c
     right := dboard.get <| SquareIndex.right row col
     down  := dboard.get <| SquareIndex.down row col
     left  := dboard.get <| SquareIndex.left row col
+    sign  := none
   }
 
 def tileBoard (dboard : DiamondBoard size c) : TileBoard size c :=

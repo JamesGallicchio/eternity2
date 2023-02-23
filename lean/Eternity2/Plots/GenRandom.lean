@@ -1,8 +1,10 @@
 import Eternity2.Puzzle.Board
+import Eternity2.Puzzle.BoardSol
+import Eternity2.Puzzle.TileSet
 
-namespace Eternity2.GenBoard
+namespace Eternity2.GenRandom
 
-def isLegal [BEq c] (dboard : DiamondBoard size (Option c)) : Bool :=
+private def isLegal [BEq c] (dboard : DiamondBoard size (Option c)) : Bool :=
   dboard.tileBoard
   |>.tiles
   |> List.filter (fun t => t.hasColor none |> not)
@@ -15,7 +17,7 @@ def isLegal [BEq c] (dboard : DiamondBoard size (Option c)) : Bool :=
      )
   |> (fun (_, legal) => legal)
 
-def blankBoard (size : Nat) : DiamondBoard size (Option (Color.withBorder b c)) :=
+private def blankBoard (size : Nat) : DiamondBoard size (Option (Color.WithBorder s)) :=
   Id.run do
     let mut a := ⟨
       Array.init (2 * (size * size.succ)) fun _ => none
@@ -23,13 +25,13 @@ def blankBoard (size : Nat) : DiamondBoard size (Option (Color.withBorder b c)) 
 
     /- Set the frame -/
     for i in DiamondIndex.frame size do
-      a := a.set i (some Color.frameColor)
+      a := a.set i (some .frame)
 
     return a
 
-/-- `size`x`size` board with `colors` colors assigned randomly. -/
-def generate (size : Nat) (centerColors : Nat) (borderColors : Nat)
-  : IO (DiamondBoard size (Color.withBorder borderColors centerColors)) := do
+/-- `size`x`size` board with colors assigned randomly. -/
+def board (size : Nat) (s)
+  : IO (DiamondBoard size (Color.WithBorder s)) := do
   attempt 1000
 where
   attempt (attempts : Nat) : IO _ := do
@@ -48,10 +50,8 @@ where
       indices := indices.removeNth i'
 
       let mut colors :=
-        if i.isBorder then
-          List.fins borderColors |>.map Color.borderColor
-        else
-          List.fins centerColors |>.map Color.centerColor
+        if i.isBorder then Color.borderColors
+        else Color.centerColors
 
       /- Pick a color that doesn't violate uniqueness constraint -/
       while !colors.isEmpty do
@@ -80,3 +80,10 @@ where
       return ⟨board, h⟩
     else
       panic! "board size wrong?"
+
+def tileSet (size : Nat) (settings)
+  : IO (TileSet size (Tile <| Color.WithBorder settings)) := do
+  let b ← board size settings
+  let t := DiamondBoard.tileBoard b
+  let ⟨ts,_⟩ ← (BoardSol.ofTileBoard t).2.scramble
+  return ts

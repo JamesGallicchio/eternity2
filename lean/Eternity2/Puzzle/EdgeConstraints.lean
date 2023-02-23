@@ -8,15 +8,15 @@ open Std LeanSAT Encode EncCNF Notation
 
 namespace Constraints
 
-structure TileSetVariables (size b c : Nat) where
-  ts : TileSet size (Color.withBorder b c)
+structure TileSetVariables (size s) where
+  ts : TileSet size (Tile <| Color.WithBorder s)
   piece_vars : Fin (size * size) → SquareIndex size → Var
-  diamond_vars : DiamondIndex size → Fin (b+c+1) → Var
+  diamond_vars : DiamondIndex size → Color.WithBorder s → Var
   sign_vars : Fin (size * size) → Var
 
 namespace TileSetVariables
 
-instance [Inhabited (Color.withBorder b c)] : Inhabited <| TileSetVariables size b c where
+instance [Inhabited (Color.WithBorder s)] : Inhabited <| TileSetVariables size s where
   default := {
     ts := default
     piece_vars := λ _ _ => 0
@@ -24,7 +24,7 @@ instance [Inhabited (Color.withBorder b c)] : Inhabited <| TileSetVariables size
     sign_vars := λ _ => 0
   }
 
-variable (tsv : TileSetVariables size b c)
+variable (tsv : TileSetVariables size s)
 
 def pieceVarList :=
   List.fins _ |>.bind fun p =>
@@ -34,19 +34,19 @@ def pieceVarList :=
 
 def diamondVarList :=
   DiamondIndex.all _ |>.bind fun d =>
-  List.fins _ |>.map fun i =>
+  Color.allColors |>.map fun i =>
   tsv.diamond_vars d i
 
 def signVarList := List.fins _ |>.map (tsv.sign_vars)
 
 def borderDiamondVarList :=
   DiamondIndex.border _ |>.bind fun d =>
-  List.fins _ |>.map fun i =>
+  Color.allColors |>.map fun i =>
   tsv.diamond_vars d i
 
 def frameDiamondVarList :=
   DiamondIndex.frame _ |>.bind fun d =>
-  List.fins _ |>.map fun i =>
+  Color.allColors |>.map fun i =>
   tsv.diamond_vars d i
 
 private def cornerTiles :=
@@ -67,17 +67,18 @@ private def centerTiles :=
 
 end TileSetVariables
 
-def mkVars (ts : TileSet size (Color.withBorder b c))
-  : EncCNF (TileSetVariables size b c) := do
+def mkVars (ts : TileSet size (Tile <| Color.WithBorder s))
+  : EncCNF (TileSetVariables size s) := do
   match ts.tiles.isDistinct with
   | false => throw s!"some tiles not unique; currently unsupported"
   | true =>
+  let map := s.toMap
   let pvs ← mkVarBlock "x" [size*size, size*size]
-  let dvs ← mkVarBlock "y" [2 * (size * size.succ), b+c+1]
+  let dvs ← mkVarBlock "y" [2 * (size * size.succ), s.size]
   let svs ← mkVarBlock "z" [size*size]
-  return ⟨ts, (pvs[·][·.toFin]), (dvs[·.toFin][·]), (svs[·])⟩
+  return ⟨ts, (pvs[·][·.toFin]), (dvs[·.toFin][map.find! ·]), (svs[·])⟩
 
-def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit :=
+def pieceConstraints (tsv : TileSetVariables size s) : EncCNF Unit :=
   EncCNF.newCtx "pieceConstraints" do
 
   let squaresAndTiles :=
@@ -104,13 +105,13 @@ def pieceConstraints (tsv : TileSetVariables size b c) : EncCNF Unit :=
 
 
 /-- Constrain each diamond has exactly one color (of the right type) -/
-def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit :=
+def diamondConstraints (tsv : TileSetVariables size s) : EncCNF Unit :=
   EncCNF.newCtx "diamondConstraints" do
   /- Frame (always frameColor) -/
   for d in DiamondIndex.frame size do
-    addClause (tsv.diamond_vars d (Color.frameColor))
+    addClause (tsv.diamond_vars d .frame)
     for c in Color.allColors do
-      if not (Color.withBorder.isFrameColor c) then
+      if not c.isFrame then
         addClause (¬tsv.diamond_vars d c)
 
   /- Border -/
@@ -120,7 +121,7 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit :=
     atMostOne <| Color.borderColors.map (tsv.diamond_vars d ·)
 
     for c in Color.allColors do
-      if not (Color.withBorder.isBorderColor c) then
+      if not c.isBorder then
         addClause (¬tsv.diamond_vars d c)
 
   for d in DiamondIndex.center size do
@@ -129,7 +130,7 @@ def diamondConstraints (tsv : TileSetVariables size b c) : EncCNF Unit :=
     atMostOne <| Color.centerColors.map (tsv.diamond_vars d ·)
 
     for c in Color.allColors do
-      if not (Color.withBorder.isCenterColor c) then
+      if not c.isCenter then
         addClause (¬tsv.diamond_vars d c)
 
 
@@ -149,32 +150,16 @@ deriving Repr
 instance [Repr c] : ToString (PieceClass c) where
   toString x := (repr x).pretty
 
-instance (b c : Nat) : Inhabited (PieceClass (Color.withBorder b c)) :=
-  ⟨.corner ⟨0,Nat.zero_lt_succ _⟩ ⟨0, Nat.zero_lt_succ _⟩⟩
+instance (s) : Inhabited (PieceClass (Color.WithBorder s)) :=
+  ⟨.corner default default⟩
 
-private def classify (t : Tile (Color.withBorder b c))
-  : PieceClass (Color.withBorder b c) :=
-  match t with
-  | {up, right, down, left} =>
-  /- rotate to put color at u, border at l (if possible) -/
-  match up.val,right.val,down.val,left.val with
-  | 0, 0, 0, 0
-  | _+1, 0, 0, 0 | 0, _+1, 0, 0 | 0, 0, _+1, 0 | 0, 0, 0, _+1
-  | 0, _+1, 0, _+1 | _+1, 0, _+1, 0
-     => panic! s!"Encountered invalid piece during solving:\n{t.toString}"
-  | u+1, r+1, 0, 0
-  | 0, u+1, r+1, 0
-  | 0, 0, u+1, r+1
-  | r+1, 0, 0, u+1 => .corner ⟨u+1,sorry⟩ ⟨r+1,sorry⟩
-  | u+1, r+1, d+1, 0
-  | 0, u+1, r+1, d+1
-  | d+1, 0, u+1, r+1
-  | r+1, d+1, 0, u+1 => .side ⟨u+1,sorry⟩ ⟨r+1,sorry⟩ ⟨d+1,sorry⟩
-  | w+1, x+1, y+1, z+1 =>
-  let w : Color.withBorder b c := ⟨w+1,sorry⟩
-  let x : Color.withBorder b c := ⟨x+1,sorry⟩
-  let y : Color.withBorder b c := ⟨y+1,sorry⟩
-  let z : Color.withBorder b c := ⟨z+1,sorry⟩
+private def classify (t : Tile (Color.WithBorder s))
+  : PieceClass (Color.WithBorder s) :=
+  match t.classify with
+  | none => panic! s!"Encountered invalid piece during solving:\n{t.toString}"
+  | some ⟨_, .corner x y _⟩ => .corner x y
+  | some ⟨_, .side x y z _⟩ => .side x y z
+  | some ⟨_, .center w x y z _⟩ =>
   /- so much casework-/
   if w = x && x = y && y = z then
     .fourSame w
@@ -207,7 +192,7 @@ private def classify (t : Tile (Color.withBorder b c))
   else
     .allDiff w x y z
 
-def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : EncCNF Unit :=
+def essentialConstraints (tsv : TileSetVariables size s) (onlyEdge : Bool) : EncCNF Unit :=
   EncCNF.newCtx "essentialConstraints" do
   for _h : i in List.fins _ do
     match (
@@ -321,14 +306,14 @@ def essentialConstraints (tsv : TileSetVariables size b c) (onlyEdge : Bool) : E
               ∨ tsv.diamond_vars (ds 0) c ∨ tsv.diamond_vars (ds 1) c
               ∨ tsv.diamond_vars (ds 2) c ∨ tsv.diamond_vars (ds 3) c)
 
-def compactEncoding (tsv : TileSetVariables size b c) (onlyEdge : Bool := false)
+def compactEncoding (tsv : TileSetVariables size s) (onlyEdge : Bool := false)
   : EncCNF Unit := do
     pieceConstraints tsv
     diamondConstraints tsv
     essentialConstraints tsv onlyEdge
 
 /-- A piece can be placed in atMostOne spot -/
-def pieceExplicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := do
+def pieceExplicitConstraints (tsv : TileSetVariables size s) : EncCNF Unit := do
   for (_,p) in tsv.cornerTiles do
     SquareIndex.corners size
     |>.map (tsv.piece_vars p ·.1)
@@ -342,7 +327,7 @@ def pieceExplicitConstraints (tsv : TileSetVariables size b c) : EncCNF Unit := 
     |>.map (tsv.piece_vars p ·.1)
     |> atMostOne
 
-def forbiddenColors (tsv : TileSetVariables size b c) : EncCNF Unit := do
+def forbiddenColors (tsv : TileSetVariables size s) : EncCNF Unit := do
   for (t,p) in tsv.centerTiles do
     let forbiddenColors := Color.centerColors.filter (!t.colors.contains ·)
     for (q,ds) in SquareIndex.center size do
@@ -353,7 +338,7 @@ def forbiddenColors (tsv : TileSetVariables size b c) : EncCNF Unit := do
           addClause (¬tsv.piece_vars p q ∨ ¬tsv.diamond_vars (ds i) c)
 
 /- Break rotational symmetry by assigning a corner to (0,0) -/
-def fixCorner (tsv : TileSetVariables size b c) : EncCNF Unit := do
+def fixCorner (tsv : TileSetVariables size s) : EncCNF Unit := do
   if h:size > 0 then
     for (i, _) in tsv.ts.tiles.enum.find? (·.2.isCorner) do
       if hi:_ then
@@ -361,7 +346,7 @@ def fixCorner (tsv : TileSetVariables size b c) : EncCNF Unit := do
       else panic! "woah"
 
 /- Constrain board to be the i'th corner configuration -/
-def fixCorners (tsv : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := do
+def fixCorners (tsv : TileSetVariables size s) (num : Fin 6) : EncCNF Unit := do
   if h:size > 0 then
     let corners := tsv.ts.tiles.enum'.filter (fun (_, t) => t.isCorner)
     match corners with
@@ -385,7 +370,7 @@ def fixCorners (tsv : TileSetVariables size b c) (num : Fin 6) : EncCNF Unit := 
 border- or center-color, the `c`-colored triangles
 must be half `+` and half `-`.
 -/
-def colorCardConstraints (tsv : TileSetVariables size b c)
+def colorCardConstraints (tsv : TileSetVariables size s)
   : EncCNF Unit := EncCNF.newCtx "colorCardConstraints" do
   for color in Color.borderColors ++ Color.centerColors do
     EncCNF.newCtx s!"{color}" do
@@ -398,7 +383,7 @@ def colorCardConstraints (tsv : TileSetVariables size b c)
       assert! (pos.size % 2 = 0) -- handshake lemma :)
       equalK pos (pos.size / 2)
 
-def signCardConstraints (tsv : TileSetVariables size b c)
+def signCardConstraints (tsv : TileSetVariables size s)
   : EncCNF Unit := do
   if size % 2 == 0 then
     /- Half the corners should be pos -/
@@ -445,7 +430,7 @@ def signCardConstraints (tsv : TileSetVariables size b c)
     assert! center_vars.size == (size-2)*(size-2)
     equalK center_vars (((size-2) * (size-2) + 1) / 2)
 
-def associatePolarities (ts : TileSetVariables size b c) : EncCNF Unit := do
+def associatePolarities (ts : TileSetVariables size s) : EncCNF Unit := do
   -- For each piece & location, positive location -> positive piece, negative location -> negative piece
   for p in List.fins _ do
     for ⟨i,j⟩ in SquareIndex.all size do
@@ -455,31 +440,3 @@ def associatePolarities (ts : TileSetVariables size b c) : EncCNF Unit := do
       else
         -- negative location
         addClause (¬ts.piece_vars p ⟨i,j⟩ ∨ ¬ts.sign_vars p)
-
-end Constraints
-
-structure EncodingSettings where
-  useRedundant  : Bool := true
-  usePolarity   : Bool := false
-  fixCorner     : Bool := true
-  fixCorners    : Option (Fin 6) := none
-
-def encodePuzzle (ts : TileSet size (Color.withBorder b c)) (es : EncodingSettings)
-  : EncCNF (Constraints.TileSetVariables size b c)
-  := do
-  let tsv ← Constraints.mkVars ts
-  Constraints.compactEncoding tsv
-
-  if es.useRedundant then
-    Constraints.forbiddenColors tsv
-    Constraints.pieceExplicitConstraints tsv
-
-  if es.usePolarity then
-    Constraints.colorCardConstraints tsv
-    Constraints.associatePolarities tsv
-
-  match es.fixCorners with
-  | none => if es.fixCorner then Constraints.fixCorner tsv
-  | some i => Constraints.fixCorners tsv i
-
-  return tsv

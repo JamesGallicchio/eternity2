@@ -1,22 +1,8 @@
-import Eternity2.Puzzle
+import Eternity2.Plots.BoardSuite
 
-open Eternity2
-open System
-open LeanSAT Encode
+namespace Eternity2
 
-
-def genTileSet (size coreColors edgeColors : Nat)
-  : IO (TileSet size (Color.withBorder edgeColors coreColors)) := do
-  let b ← GenBoard.generate size coreColors edgeColors
-  let t := DiamondBoard.tileBoard b
-  let ⟨ts,_⟩ ← t.toBoardSol.2.scramble
-  return ts
-
-def fetchEternity2Tiles : IO (TileSet 16 (Color.withBorder 5 17)) := do
-  let ts ← TileSet.fromFile "../puzzles/e2pieces.txt"
-  match ts with
-  | ⟨16, 5, 17, tiles⟩ => return tiles
-  | ⟨size,b,c,_⟩ => panic! s!"e2pieces.txt has size {size} and {b},{c} colors??"
+open System LeanSAT Encode
 
 /-
 Generates boards of a specific size with a variety of colors and outputs
@@ -25,8 +11,8 @@ and computes some metric with `calcData`
 def plotData (name : String)
              (colLabels : List String)
              (size : Nat)
-             (calcData : {b c : Nat}
-                       → TileSet size (Color.withBorder b c)
+             (calcData : {s : _}
+                       → TileSet size (Tile <| Color.WithBorder s)
                        → IO (List String))
            : IO Unit := do
   let plotsDir : FilePath := "./plots/"
@@ -45,7 +31,9 @@ def plotData (name : String)
   TaskIO.wait <| TaskIO.parUnit [0:maxColors] fun i => do
     let colors := size + maxColors - i - 2
     TaskIO.parTasksUnit [0:maxRuns] fun j => do
-      let tiles ← genTileSet size colors (size.sqrt + 1)
+      let s : Color.WithBorder.Settings :=
+        ⟨List.range colors, List.range (size.sqrt + 1)⟩
+      let tiles ← genTileSet size s
       let boardTitle := s!"{size}_{colors}_{j}"
 
       IO.println s!"Board: {boardTitle}"
@@ -60,13 +48,13 @@ def plotData (name : String)
 
 def countSols (count : IO.Ref Nat)
               (output : Option ( FilePath
-                               × Constraints.TileSetVariables size b c))
+                               × Constraints.TileSetVariables size s))
               (asgn : Std.HashMap Var Bool)
             : IO Unit := do
   count.modify (·+1)
   match output with
   | some (file, tsv) => (
-    match SolvePuzzle.decodePieces tsv asgn with
+    match SolvePuzzle.decodeSol tsv asgn with
     | .ok sol => sol.writeSolution file
     | .error s => panic! s
   )
@@ -75,7 +63,7 @@ def countSols (count : IO.Ref Nat)
 def plotSolCounts (name : String)
                   (size : Nat)
                   (encoding : {b c : Nat}
-                            → TileSet size (Color.withBorder b c)
+                            → TileSet size (Tile <| Color.withBorder b c)
                             → EncCNF (List Var))
                 : IO Unit := do
   plotData name ["sols"] size fun tiles => do
@@ -163,7 +151,7 @@ def plotCorr_sign_puzzle_withTimes (size : Nat) : IO Unit := do
 
 
 /- Outputs all solutions to a given tileset as solution files in `outputFolder`. -/
-def outputAllSols (name : String) (ts : TileSet size (Color.withBorder b c))
+def outputAllSols (name : String) (ts : TileSet size (Tile <| Color.withBorder b c))
       (outputFolder : FilePath)
       (es : EncodingSettings)
       (parallelize : Bool := false)
@@ -215,7 +203,7 @@ def genAndSolveBoards (outputDir : FilePath)
     let ts ← genTileSet size colors (Nat.sqrt size + 1)
     let file := outputDir / s!"{name}.tiles"
     Log.info s!"Generated tile set {name}"
-    ts.toFile file
+    .toFile file
     let solDir := outputDir / name
     IO.FS.createDir solDir
     Log.info s!"Finding solutions to {name}"
@@ -287,7 +275,7 @@ def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c)
       corrs := (p1,p2,same_count.toNat,diff_count.toNat) :: corrs
   return corrs
 
-partial def findCorrs (ts : TileSet size (Color.withBorder b c)) (sols : List (BoardSol ts)) : IO Unit := do
+partial def findCorrs (ts : TileSet size (Tile <| Color.withBorder b c)) (sols : List (BoardSol ts)) : IO Unit := do
   let (tsv, enc) := EncCNF.new! do
     let tsv ← Constraints.mkVars ts
     Constraints.colorCardConstraints tsv

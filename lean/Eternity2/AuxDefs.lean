@@ -80,3 +80,15 @@ def LeanSAT.Encode.EncCNF.State.cleanup : State → State
     names := namesRemap
     clauses := clausesRemap
     varCtx := varCtx}
+
+def List.pmap {p : α → Prop} (f : ∀ a, p a → β) : ∀ l : List α, (∀ a ∈ l, p a) → List β
+  | [], _ => []
+  | a :: l, H => f a (H a (List.Mem.head _)) :: pmap f l (fun a h => H a (List.Mem.tail _ h))
+
+def List.attach (l : List α) : List { x // x ∈ l } :=
+  pmap Subtype.mk l fun _ => id
+
+@[simp] theorem List.length_pmap : List.length (List.pmap f L h) = List.length L := by
+  induction L with
+  | nil => simp [pmap]
+  | cons x xs ih => simp [pmap, ih]
