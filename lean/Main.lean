@@ -47,9 +47,10 @@ def runGenTileSetCmd (p : Parsed) : IO UInt32 := do
   let colors := if colors = 0 then size + 1 else colors
   let bordercolors := if bordercolors = 0 then size.sqrt + 1 else bordercolors
 
-  let ts ← genTileSet size colors bordercolors
+  let ts ← IO.ofExcept <|
+    ← show RandomM _ from GenRandom.tileSet size ⟨List.range colors, List.range bordercolors⟩
   IO.println "c generated randomly"
-  IO.println ts.toFileFormat
+  IO.println <| FileFormat.TileSet.toFileFormat ts
 
   return 0
 
@@ -80,8 +81,8 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
   
   ensureFileDNEOrAskToOverwrite logfile
 
-  match ← TileSet.fromFile tileset with
-  | ⟨_, _, _, tiles⟩ =>
+  match ← FileFormat.TileSet.ofFile tileset with
+  | ⟨_, _, tiles⟩ =>
 
   IO.FS.writeFile logfile ""
   IO.FS.withFile logfile .append (fun handle =>
@@ -171,10 +172,10 @@ def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
   let sols : String ← IO.ofExcept <|
     p.flag? "sols" |>.map (·.as! String) |>.expectSome fun () => "--sols <dir> argument missing" 
 
-  let ⟨_,_,_,ts⟩ ← TileSet.fromFile tileset
+  let ⟨_, _, ts⟩ ← FileFormat.TileSet.ofFile tileset
   let sols ←
     (← System.FilePath.walkDir sols (fun f => pure <| f.extension.isEqSome "sol"))
-    |>.mapM (fun f => BoardSol.readSolution f ts)
+    |>.mapM (fun f => FileFormat.BoardSol.ofFile ts f)
 
   findCorrs ts sols.toList
   return 0

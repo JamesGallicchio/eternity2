@@ -1,3 +1,5 @@
+import Eternity2.FileFormat.Puz
+import Eternity2.FileFormat.Sol
 import Eternity2.Plots.BoardSuite
 import Eternity2.Plots.GenRandom
 import Eternity2.Puzzle.SolvePuzzle
@@ -178,16 +180,16 @@ def genBoardSuite (output : FilePath) : IO Unit := do
     for colors in [size+1:61] do
       IO.FS.createDir (output / s!"{size}" / s!"{colors}")
       for iter in [0:20] do
-        let b ← GenRandom.board size ⟨List.range colors, List.range (Nat.sqrt size + 1)⟩
+        let b ← IO.ofExcept <| ← GenRandom.board size ⟨List.range colors, List.range (Nat.sqrt size + 1)⟩
         let t := b.tileBoard
         let ⟨ts,b⟩ ← (BoardSol.ofTileBoard t).2.scramble
         IO.FS.createDir (output / s!"{size}" / s!"{colors}" / s!"board_{iter}")
-        b.writeSolution (output / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol")
-        ts.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
+        FileFormat.BoardSol.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol") b
+        FileFormat.TileSet.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz") ts
 
 
 def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
-    (es : EncodingSettings)
+    (es : SolvePuzzle.EncodingSettings)
     : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
@@ -196,9 +198,9 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
       let timedOut ← TaskIO.parTasks [0:10] fun iter => do
-        let ⟨_,_,_,ts⟩ ← TileSet.fromFile (
+        let ⟨_,_,ts⟩ ← FileFormat.TileSet.ofFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
-        let (tsv, enc) := EncCNF.new! <| encodePuzzle ts es
+        let (tsv, enc) := EncCNF.new! <| SolvePuzzle.encodePuzzle ts es
         let startTime ← IO.monoMsNow
         let timedOut :=
           match ← (IO.asTaskTimeout timeout <| SolvePuzzle.solveAll enc tsv) with
@@ -216,7 +218,7 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
         colors := colors - 1
 
 open Notation in -- nice notation for encodings
-def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c)
+def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size s)
   : IO (List (Fin (size*size) × Fin (size*size) × Nat × Nat)) := do
   let mut corrs := []
   for p1 in List.fins (size*size) do
@@ -235,7 +237,7 @@ def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size b c)
       corrs := (p1,p2,same_count.toNat,diff_count.toNat) :: corrs
   return corrs
 
-partial def findCorrs (ts : TileSet size (Tile <| Color.withBorder b c)) (sols : List (BoardSol ts)) : IO Unit := do
+partial def findCorrs (ts : TileSet size (Tile <| Color.WithBorder s)) (sols : List (BoardSol ts)) : IO Unit := do
   let (tsv, enc) := EncCNF.new! do
     let tsv ← Constraints.mkVars ts
     Constraints.colorCardConstraints tsv

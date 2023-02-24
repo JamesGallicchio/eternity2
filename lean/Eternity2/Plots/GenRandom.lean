@@ -39,7 +39,7 @@ def board (size : Nat) (s)
     | .error _ => continue
   return .error s!"ran out of attempts when generating board of size {size}"
 where
-  attempt (u : Unit) : ExceptT String RandomM
+  attempt (_ : Unit) : ExceptT String RandomM
                         (DiamondBoard size (Color.WithBorder s)) := do
     let mut a := blankBoard size
     let mut indices := DiamondIndex.border size ++ DiamondIndex.center size
@@ -83,7 +83,7 @@ where
       panic! "board size wrong?"
 
 def tileSet (size : Nat) (settings)
-  : IO (TileSet size (Tile <| Color.WithBorder settings)) := do
+  : ExceptT String RandomM (TileSet size (Tile <| Color.WithBorder settings)) := do
   let b ← board size settings
   let t := DiamondBoard.tileBoard b
   let ⟨ts,_⟩ ← (BoardSol.ofTileBoard t).2.scramble

@@ -436,6 +436,9 @@ structure DiamondBoard (size : Nat) (color : Type u) where
 
 namespace DiamondBoard
 
+instance [Inhabited color] : Inhabited (DiamondBoard size color) :=
+  ⟨⟨⟨List.replicate (2*(size*size.succ)) default⟩, by simp⟩⟩
+
 def get (di : DiamondIndex size) (db : DiamondBoard size c) :=
   db.board.get (db.boardsize ▸ di.toFin)
 

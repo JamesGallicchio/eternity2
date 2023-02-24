@@ -20,6 +20,11 @@ def toFileFormat (ts : TileSet size (Tile (Color.WithBorder s))) :=
   String.intercalate "\n"
     ( ts.tiles.map toFileFormat.tile ) ++ "\n"
 
+def toFile (filename : System.FilePath) (ts : TileSet size (Tile <| Color.WithBorder s))
+                : IO Unit := do
+  IO.FS.withFile filename .write (fun h => h.putStr (toFileFormat ts))
+
+
 def ofFileFormat (s : String) :
   Except String (Σ size s, TileSet size (Tile (Color.WithBorder s)))
   := do

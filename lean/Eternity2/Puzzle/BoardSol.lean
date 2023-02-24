@@ -47,17 +47,16 @@ def ofTileBoard (tb : TileBoard size (Color.WithBorder s))
 
 /- Randomly rotate the tiles, and mix up their order -/
 def scramble {ts : TileSet size (Tile <| Color.WithBorder s)} (sol : BoardSol ts)
-  : IO ((ts : TileSet size (Tile <| Color.WithBorder s)) × BoardSol ts) := do
+  : RandomM ((ts : TileSet size (Tile <| Color.WithBorder s)) × BoardSol ts) := do
   /- Rotate the pieces -/
   let rotated ← ts.tiles.enum'.mapM (fun (i, tile) => do
-    let rot ← IO.rand 0 3
-    let rot' : Fin 4 := ⟨rot, sorry⟩
+    let rot ← RandomM.randFin 4
     /- og index, rotation vs og, rotated tile -/ 
-    return (ts.h_ts ▸ i, rot', tile.rotln rot'))
+    return (ts.h_ts ▸ i, rot, tile.rotln rot))
   /- Randomly permute the corners/sides/centers -/
-  let corners ← rotated.filter (·.2.2.isCorner) |> IO.randPerm
-  let sides   ← rotated.filter (·.2.2.isSide)   |> IO.randPerm
-  let centers ← rotated.filter (·.2.2.isCenter) |> IO.randPerm
+  let corners ← rotated.filter (·.2.2.isCorner) |> RandomM.randPerm
+  let sides   ← rotated.filter (·.2.2.isSide)   |> RandomM.randPerm
+  let centers ← rotated.filter (·.2.2.isCenter) |> RandomM.randPerm
   /- Recombine -/
   have all := corners.toArray ++ sides ++ centers
   have h_all : all.size = size * size := sorry

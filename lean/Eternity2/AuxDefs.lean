@@ -93,20 +93,43 @@ def List.attach (l : List α) : List { x // x ∈ l } :=
   | nil => simp [pmap]
   | cons x xs ih => simp [pmap, ih]
 
-def RandomM (τ) := ∀ g [RandomGen g], StateM g τ
+def RandomM (τ) := ∀ g, RandomGen g → StateM g τ
+
+namespace RandomM
 
 instance [RandomGen g] : Monad RandomM where
-  pure a    := λ _ => pure a
-  bind r f  := λ G => bind (r G) (fun a => f a G)
+  pure a    := λ _ _ => pure a
+  bind r f  := λ G R => bind (r G R) (fun a => f a G R)
 
-def RandomM.run [RandomGen G] (g : G) (r : RandomM τ) : τ × G :=
-  StateT.run (r G) g
+def run [R : RandomGen G] (g : G) (r : RandomM τ) : τ × G :=
+  StateT.run (r G R) g
 
-def RandomM.randFin (n : Nat) : n > 0 → RandomM (Fin n) :=
-  λ hn G R g =>
+instance : MonadLift RandomM IO where
+  monadLift r := do
+    let gen ← IO.stdGenRef.get
+    let (res, seed) := run gen r
+    IO.stdGenRef.set seed
+    return res
+
+def randFin (n : Nat) (hn : n > 0 := by trivial) : RandomM (Fin n) :=
+  λ G R g =>
     let (res, g) := @randNat G R g 0 n
     if h : res < n then
       (⟨res, h⟩, g)
     else
       have : Inhabited (Fin n × G) := ⟨⟨⟨0,hn⟩, g⟩⟩
       panic! s!"randFin wrong: n={n}, res={res}"
+
+/- Generate a random permutation of the list.
+Implementation is quadratic in length of L. -/
+def randPerm (L : List α) : RandomM (List α) :=
+  randPermTR L [] 0
+where randPermTR (L acc n) := do
+  match L with
+  | [] => return acc
+  | x::xs =>
+    let idx ← RandomM.randFin (n+1) (Nat.zero_lt_succ _)
+    let acc' := acc.insertNth idx x
+    randPermTR xs acc' (n+1)
+
+end RandomM
