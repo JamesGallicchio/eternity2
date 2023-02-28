@@ -112,20 +112,27 @@ def solveTileSetCmd := `[Cli|
 ]
 
 def runGenBoardSuiteCmd (p : Parsed) : IO UInt32 := do
-  let output : FilePath := p.flag! "output" |>.as! String
+  let output : FilePath :=
+    (← (p.flag? "output"
+    |>.expectSome (fun () => "option --output required")
+    |> IO.ofExcept))
+    |>.as! String
   let seed : Option Nat := p.flag? "seed" |>.map (·.as! Nat)
 
-  for seed in seed do
-    IO.println s!"Using seed {seed}"
-    IO.setRandSeed seed
+  let seed ← match seed with
+    | none => IO.rand 0 (UInt32.size-1)
+    | some s => pure s
+
+  IO.println s!"Using seed {seed}"
+  IO.setRandSeed seed
 
   if ←output.pathExists then
     IO.println s!"ERROR: Directory {output} already exists. Please delete the directory or choose a different name for the output directory."
     return 1
-  
+
   IO.FS.createDirAll output
-  
-  genBoardSuite output
+
+  let _ ← GenRandom.boardSuite seed output
 
   return 0
 

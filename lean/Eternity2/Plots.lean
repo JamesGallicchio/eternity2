@@ -33,11 +33,11 @@ def plotData (name : String)
 
   -- run calcData in parallel across boards
   TaskIO.wait <| TaskIO.parTasksUnit suite.boards fun board => do
-    let data ← calcData board.tiles
+    let data ← calcData board.ts
 
     results.putStrLn
       <| String.intercalate ","
-      <| [board.path.toString, toString board.size,
+      <| [board.puzFile.toString, toString board.size,
           toString board.colors.center, toString board.colors.border]
           ++ data
 
@@ -172,20 +172,6 @@ where
         let file := outputFolder / s!"{name}_sol{num}.sol"
         FileFormat.BoardSol.toFile file sol
         Log.info s!"Board {name}: Wrote solution #{num} to {file}"
-
-
-def genBoardSuite (output : FilePath) : IO Unit := do
-  for size in [4:17] do
-    IO.FS.createDir (output / s!"{size}")
-    for colors in [size+1:61] do
-      IO.FS.createDir (output / s!"{size}" / s!"{colors}")
-      for iter in [0:20] do
-        let b ← IO.ofExcept <| ← GenRandom.board size ⟨List.range colors, List.range (Nat.sqrt size + 1)⟩
-        let t := b.tileBoard
-        let ⟨ts,b⟩ ← (BoardSol.ofTileBoard t).2.scramble
-        IO.FS.createDir (output / s!"{size}" / s!"{colors}" / s!"board_{iter}")
-        FileFormat.BoardSol.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}" / "default_sol.sol") b
-        FileFormat.TileSet.toFile (output / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz") ts
 
 
 def testSolveTimes (boardsuite : FilePath) (timeout : Nat)

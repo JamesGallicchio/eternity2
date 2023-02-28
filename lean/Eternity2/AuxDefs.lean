@@ -111,9 +111,16 @@ instance : MonadLift RandomM IO where
     IO.stdGenRef.set seed
     return res
 
+@[inline]
+def randIndep (p1 : RandomM α) : RandomM α :=
+  λ _ R r => let (r1,r2) := RandomGen.split r
+             let (a,_) := p1 _ R r1
+             (a,r2)
+
+@[inline]
 def randFin (n : Nat) (hn : n > 0 := by trivial) : RandomM (Fin n) :=
   λ G R g =>
-    let (res, g) := @randNat G R g 0 n
+    let (res, g) := @randNat G R g 0 n.pred
     if h : res < n then
       (⟨res, h⟩, g)
     else

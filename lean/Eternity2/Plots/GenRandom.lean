@@ -1,3 +1,4 @@
+import Eternity2.Plots.BoardSuite
 import Eternity2.Puzzle.Board
 import Eternity2.Puzzle.BoardSol
 import Eternity2.Puzzle.TileSet
@@ -36,7 +37,8 @@ def board (size : Nat) (s)
   while attempts < 1000 do
     match ← attempt () with
     | .ok a => return .ok a
-    | .error _ => continue
+    | .error _ =>
+      attempts := attempts + 1
   return .error s!"ran out of attempts when generating board of size {size}"
 where
   attempt (_ : Unit) : ExceptT String RandomM
@@ -88,3 +90,40 @@ def tileSet (size : Nat) (settings)
   let t := DiamondBoard.tileBoard b
   let ⟨ts,_⟩ ← (BoardSol.ofTileBoard t).2.scramble
   return ts
+
+def boardSuite (seed : Nat) (output : System.FilePath) : IO BoardSuite := do
+  let mut boards := #[]
+  for size in [4:17] do
+    let output := output / s!"{size}"
+    IO.FS.createDir output
+    for colors in [size+1:size*3+10] do
+      let output := output / s!"{colors}"
+      IO.FS.createDir output
+      for iter in [0:20] do
+        -- using seed + parameters as start for rng, make a board
+        -- this is deterministic for the same seed, even if the range of size/colors/iters changes
+        let gen := mkStdGen <| (hash [seed, size, colors, iter]).toNat
+        let colors :=
+          let border := Nat.sqrt size + 1
+          { border := List.range border |>.map (·+1)
+          , center := List.range colors |>.map (·+1+border) }
+        let b ←
+          GenRandom.board size colors
+          |> RandomM.run gen
+          |>.1 |> IO.ofExcept
+        -- write the resulting puzzle + the default solution to files
+        let t := b.tileBoard
+        let ⟨ts,b⟩ ← (BoardSol.ofTileBoard t).2.scramble
+        let dir := output / s!"board_{iter}"
+        IO.FS.createDir dir
+        FileFormat.TileSet.toFile  (dir / "puzzle.puz") ts
+        FileFormat.BoardSol.toFile (dir / "default_sol.sol") b
+        -- construct BoardDir
+        let bd : BoardDir := {
+          puzFile := dir / "puzzle.puz",
+          size, colors, ts,
+          sols := #[(dir / "default_sol.sol", b)]
+          allSols := false
+          }
+        boards := boards.push bd
+  return ⟨boards⟩
