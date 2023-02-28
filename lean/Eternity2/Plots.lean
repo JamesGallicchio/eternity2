@@ -58,14 +58,14 @@ def plotSolCounts (name suite results)
 
 def plotSignSolCounts (suite output) := show IO _ from do
   plotSolCounts "sign" suite output fun ts => do
-    let tsv ← Constraints.mkVars ts
-    Constraints.colorCardConstraints tsv
+    let tsv ← Encoding.mkVars ts
+    Encoding.colorCardConstraints tsv
     return tsv.signVarList
 
 def plotEdgeSignSolCounts (suite output) := show IO _ from do
   plotSolCounts "edgesign" suite output fun ts => do
-    let tsv ← Constraints.mkVars ts
-    Constraints.colorCardConstraints tsv
+    let tsv ← Encoding.mkVars ts
+    Encoding.colorCardConstraints tsv
     return List.fins _ |>.filterMap (fun i =>
       if !tsv.ts.tiles[tsv.ts.h_ts.symm ▸ i].isCenter
       then some (tsv.sign_vars i)
@@ -73,16 +73,16 @@ def plotEdgeSignSolCounts (suite output) := show IO _ from do
 
 def plotPuzzleSolCounts (suite output) := show IO _ from do
   plotSolCounts "puzzle" suite output fun ts => do
-    let tsv ← Constraints.mkVars ts
-    Constraints.compactEncoding tsv false
-    Constraints.fixCorner tsv
+    let tsv ← Encoding.mkVars ts
+    Encoding.compactEncoding tsv false
+    Encoding.fixCorner tsv
     return tsv.diamondVarList
 
 def plotEdgePuzzleSolCounts (suite output) := show IO _ from do
   plotSolCounts "edgepuzzle" suite output fun ts => do
-    let tsv ← Constraints.mkVars ts
-    Constraints.compactEncoding tsv (onlyEdge := true)
-    Constraints.fixCorner tsv
+    let tsv ← Encoding.mkVars ts
+    Encoding.compactEncoding tsv (onlyEdge := true)
+    Encoding.fixCorner tsv
     return tsv.borderDiamondVarList
 
 def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
@@ -94,8 +94,8 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
       -- Count solutions to just polarity constraints
       let signsols ← (do
         let (blocking_vars, state) := EncCNF.new! do
-          let tsv ← Constraints.mkVars ts
-          Constraints.colorCardConstraints tsv
+          let tsv ← Encoding.mkVars ts
+          Encoding.colorCardConstraints tsv
           return tsv.signVarList
 
         return ← Solver.ApproxModelCount.approxModelCount
@@ -104,9 +104,9 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
       -- Count solutions to just puzzle constraints (and time it)
       let (soltime, puzzlesols) ← IO.timeMs (do
         let (blocking_vars, state) := EncCNF.new! do
-          let tsv ← Constraints.mkVars ts
-          Constraints.compactEncoding tsv
-          Constraints.fixCorner tsv
+          let tsv ← Encoding.mkVars ts
+          Encoding.compactEncoding tsv
+          Encoding.fixCorner tsv
           return tsv.diamondVarList
 
         return ← Solver.ApproxModelCount.approxModelCount
@@ -115,11 +115,11 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
       -- Count solutions to puzzle constraints with sign constraints (and time it)
       let (soltime_withsigns, puzzlesols') ← IO.timeMs (do
         let (blocking_vars, state) := EncCNF.new! do
-          let tsv ← Constraints.mkVars ts
-          Constraints.compactEncoding tsv
-          Constraints.fixCorner tsv
-          Constraints.colorCardConstraints tsv
-          Constraints.associatePolarities tsv
+          let tsv ← Encoding.mkVars ts
+          Encoding.compactEncoding tsv
+          Encoding.fixCorner tsv
+          Encoding.colorCardConstraints tsv
+          Encoding.associatePolarities tsv
           return tsv.diamondVarList
 
         return ← Solver.ApproxModelCount.approxModelCount
@@ -148,13 +148,13 @@ def outputAllSols (name : String) (ts : TileSet size (Tile <| Color.WithBorder s
     TaskIO.parUnit (List.fins 6) fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do
-        Constraints.fixCorners tsv i
+        Encoding.fixCorners tsv i
       Log.info s!"Board {name} c{i}: Starting solver"
       solveAndOutput tsv enc s!"{name} c{i}" counter
       Log.info s!"Board {name} c{i}: Solver finished"
   else
     let ((), enc) := EncCNF.run! enc do
-      Constraints.fixCorner tsv
+      Encoding.fixCorner tsv
     solveAndOutput tsv enc name counter
   IO.FS.writeFile (outputFolder / "done") ""
   Log.info s!"Board {name}: All solutions found"
@@ -204,7 +204,7 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
         colors := colors - 1
 
 open Notation in -- nice notation for encodings
-def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size s)
+def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables size s)
   : IO (List (Fin (size*size) × Fin (size*size) × Nat × Nat)) := do
   let mut corrs := []
   for p1 in List.fins (size*size) do
@@ -225,9 +225,9 @@ def getCorrs (enc : EncCNF.State) (tsv : Constraints.TileSetVariables size s)
 
 partial def findCorrs (ts : TileSet size (Tile <| Color.WithBorder s)) (sols : List (BoardSol ts)) : IO Unit := do
   let (tsv, enc) := EncCNF.new! do
-    let tsv ← Constraints.mkVars ts
-    Constraints.colorCardConstraints tsv
-    Constraints.signCardConstraints tsv
+    let tsv ← Encoding.mkVars ts
+    Encoding.colorCardConstraints tsv
+    Encoding.signCardConstraints tsv
     if h:0 < size*size then EncCNF.addClause (tsv.sign_vars ⟨0,h⟩)
     return tsv
 

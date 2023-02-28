@@ -1,12 +1,10 @@
-import Eternity2.Puzzle.TileSet
-
-namespace Eternity2
-
-open Std LeanSAT Encode EncCNF Notation
-
 /- Implement constraints as described in Heule 2008 -/
 
-namespace Constraints
+import Eternity2.Puzzle.TileSet
+
+namespace Eternity2.Encoding
+
+open Std LeanSAT Encode EncCNF Notation
 
 structure TileSetVariables (size s) where
   ts : TileSet size (Tile <| Color.WithBorder s)

@@ -1,10 +1,9 @@
 import Eternity2.Puzzle.BoardSol
-import Eternity2.Puzzle.EdgeConstraints
 import SolverConfig
 
 namespace Eternity2.SolvePuzzle
 
-open Constraints LeanSAT Encode EncCNF
+open Encoding LeanSAT Encode EncCNF
 
 structure EncodingSettings where
   useRedundant  : Bool := true
@@ -13,26 +12,26 @@ structure EncodingSettings where
   fixCorners    : Option (Fin 6) := none
 
 def encodePuzzle (ts : TileSet size (Tile <| Color.WithBorder s)) (es : EncodingSettings)
-  : EncCNF (Constraints.TileSetVariables size s)
+  : EncCNF (TileSetVariables size s)
   := do
-  let tsv ← Constraints.mkVars ts
-  Constraints.compactEncoding tsv
+  let tsv ← mkVars ts
+  compactEncoding tsv
 
   if es.useRedundant then
-    Constraints.forbiddenColors tsv
-    Constraints.pieceExplicitConstraints tsv
+    forbiddenColors tsv
+    pieceExplicitConstraints tsv
 
   if es.usePolarity then
-    Constraints.colorCardConstraints tsv
-    Constraints.associatePolarities tsv
+    colorCardConstraints tsv
+    associatePolarities tsv
 
   match es.fixCorners with
-  | none => if es.fixCorner then Constraints.fixCorner tsv
-  | some i => Constraints.fixCorners tsv i
+  | none => if es.fixCorner then fixCorner tsv
+  | some i => fixCorners tsv i
 
   return tsv
 
-def decodeToDiamondBoard (tsv : Constraints.TileSetVariables size s) (m : Assn) :=
+def decodeToDiamondBoard (tsv : TileSetVariables size s) (m : Assn) :=
   let tb : DiamondBoard size (Option (Color.WithBorder s)) := {
     board :=
       Array.init _ (fun k =>
@@ -44,7 +43,7 @@ def decodeToDiamondBoard (tsv : Constraints.TileSetVariables size s) (m : Assn) 
   tb
 
 def decodeSol
-      (tsv : Constraints.TileSetVariables size s)
+      (tsv : TileSetVariables size s)
       (assn : LeanSAT.Assn)
     : Except String (BoardSol tsv.ts) := do
   let board ← decodeToDiamondBoard tsv assn |>.expectFull
