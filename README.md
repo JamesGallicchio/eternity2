@@ -24,8 +24,8 @@ to download the code dependencies and build the CLI tool.
 Run `eternity2 --help` to see the available subcommands, and
 `eternity2 [subcommand] --help` for help text for each of the subcommands.
 
-To generate the board suite used by our experiments, run
-`eternity2 gen-board-suite --seed 480 --output <DIR>`.
+The board suite in `puzzles/board_suite` is generated deterministically by
+`eternity2 gen-board-suite --seed 480 --output puzzles/board_suite`.
 
 ## Terminology
 
