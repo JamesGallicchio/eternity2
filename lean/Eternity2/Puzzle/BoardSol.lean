@@ -1,6 +1,6 @@
 import Eternity2.Puzzle.Board
 import Eternity2.Puzzle.TileSet
-import Eternity2.Puzzle.EdgeConstraints
+import Eternity2.Puzzle.Encoding
 
 namespace Eternity2
 

@@ -6,7 +6,7 @@ import Eternity2.Plots.GenRandom
 import Eternity2.Plots
 import Eternity2.Puzzle.Board
 import Eternity2.Puzzle.BoardSol
-import Eternity2.Puzzle.EdgeConstraints
+import Eternity2.Puzzle.Encoding
 import Eternity2.Puzzle.SignSol
 import Eternity2.Puzzle.SolvePuzzle
 import Eternity2.Puzzle.TileSet
