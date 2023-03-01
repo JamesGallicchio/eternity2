@@ -140,32 +140,3 @@ where randPermTR (L acc n) := do
     randPermTR xs acc' (n+1)
 
 end RandomM
-
-
-namespace ST.Ref
-
-@[inline] unsafe def modifyMUnsafe {σ α β : Type} [Monad m] [MonadLiftT (ST σ) m] (r : Ref σ α) (f : α → m α) : m Unit := do
-  let v ← Ref.take r
-  let a ← f v
-  Ref.set r a
-
-@[implemented_by Ref.modifyMUnsafe]
-def modifyM {σ α β : Type} [Monad m] [MonadLiftT (ST σ) m] (r : Ref σ α) (f : α → m α) : m Unit := do
-  let v ← Ref.get r
-  let a ← f v
-  Ref.set r a
-
-@[inline] unsafe def modifyGetMUnsafe {σ α β : Type} [Monad m] [MonadLiftT (ST σ) m] (r : Ref σ α) (f : α → m (β × α)) : m β := do
-  let v ← Ref.take r
-  let (b,a) ← f v
-  Ref.set r a
-  return b
-
-@[implemented_by Ref.modifyGetMUnsafe]
-def modifyGetM {σ α β : Type} [Monad m] [MonadLiftT (ST σ) m] (r : Ref σ α) (f : α → m (β × α)) : m β := do
-  let v ← Ref.get r
-  let (b,a) ← f v
-  Ref.set r a
-  return b
-
-end ST.Ref

@@ -59,8 +59,8 @@ where
         | .error s =>
           Log.error s!"Failed to decode board {name} solution: {s}"
         | .ok sol =>
-          let path ← bdRef.modifyGetM fun ⟨bdir,h⟩ => do
-            let (path, bdir') ← bdir.addSolNextName (h ▸ sol)
-            return (path, ⟨bdir', sorry⟩)
+          let ⟨bdir,h⟩ ← bdRef.get
+          let (path, bdir') ← bdir.addSolNextName (h ▸ sol)
+          bdRef.set ⟨bdir', sorry⟩
           Log.info s!"Board {name}: Wrote solution to {path.fileName.get!}"
     return

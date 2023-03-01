@@ -55,8 +55,6 @@ def BoardDir.addSolNextName (bd : BoardDir) (sol : BoardSol bd.ts) : IO (FilePat
   while ← path.pathExists do
     idx := idx+1
     path := bd.puzFile.withFileName s!"sol_{idx}.sol"
-
-  assert! not (←path.pathExists)
   
   let bd ← addSol bd path sol
   return (path,bd)
