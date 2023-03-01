@@ -24,11 +24,11 @@ def BoardDir.ofPuzFile (puzFile : FilePath) : IO BoardDir := do
 
   -- read each sol file as a solution to ts
   let sols ← solFiles.mapM (fun f => do
-    return (f, ← FileFormat.BoardSol.ofFile ts f))
+    return (← IO.FS.realPath f, ← FileFormat.BoardSol.ofFile ts f))
 
   -- check whether `done` file is present in directory (which indicates all solutions were found)
   let allSols ← (puzFile.withFileName "done").pathExists
-  return { puzFile, size, colors, ts, sols, allSols }
+  return { puzFile := ← IO.FS.realPath puzFile, size, colors, ts, sols, allSols }
 
 def BoardDir.updateFilesystem (bd : BoardDir) : IO Unit := do
   if ! (←bd.puzFile.pathExists) then
@@ -52,10 +52,12 @@ def BoardDir.addSol (bd : BoardDir) (path : FilePath) (sol : BoardSol bd.ts) : I
 def BoardDir.addSolNextName (bd : BoardDir) (sol : BoardSol bd.ts) : IO (FilePath × BoardDir) := do
   let mut idx := 1
   let mut path := bd.puzFile.withFileName s!"sol_{idx}.sol"
-  while bd.sols.any (·.1 = path) do
+  while ← path.pathExists do
     idx := idx+1
     path := bd.puzFile.withFileName s!"sol_{idx}.sol"
 
+  assert! not (←path.pathExists)
+  
   let bd ← addSol bd path sol
   return (path,bd)
 

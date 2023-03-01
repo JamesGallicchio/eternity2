@@ -6,6 +6,11 @@ open System
 
 open Cli
 
+def cadicalCmd (timeout : Option Nat) : LeanSAT.Solver IO :=
+  match timeout with
+  | none => LeanSAT.Solver.Impl.DimacsCommand "cadical"
+  | some timeout => LeanSAT.Solver.Impl.DimacsCommand "timeout" [toString timeout, "cadical"]
+
 /- Ensure directory exists -/
 def ensureDirectoryExists (file : FilePath) : IO Unit := do
   if (←file.pathExists) then
@@ -75,13 +80,18 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
 
   let logfile : FilePath :=
     p.flag? "logfile" |>.map (·.as! String)
-      |>.getD (tileset / s!"{tileset.fileName.get!}.log")
+      |>.getD (tileset.withFileName s!"{tileset.fileStem.get!}.log")
+  let timeout : Option Nat :=
+    p.flag? "timeout" |>.map (·.as! Nat)
+
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
 
   ensureFileDNEOrAskToOverwrite logfile
 
   let bd ← BoardDir.ofPuzFile tileset
+
+  have := cadicalCmd timeout
 
   IO.FS.writeFile logfile ""
   IO.FS.withFile logfile .append (fun handle =>
@@ -101,8 +111,8 @@ def solveTileSetCmd := `[Cli|
 
   FLAGS:
     tileset : String; "File containing the tileset to solve"
-    output : String; "Directory to output solutions"
     logfile : String; "File for detailed logs"
+    timeout : Nat; "Optional timeout for the solver (in seconds)"
     "use-redundant" : Bool; "Use redundant clauses (forbidden color & explicit piece locations)"
     "use-polarity" : Bool; "Use sign polarity constraints"
   
@@ -147,7 +157,7 @@ def genBoardSuiteCmd := `[Cli|
 
 def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
   let suite : FilePath := p.flag! "suite" |>.as! String
-  let timeout : Nat := p.flag! "timeout" |>.as! Nat
+  let timeout : Option Nat := p.flag? "timeout" |>.map (·.as! Nat)
 
   let logfile : FilePath :=
     p.flag? "logfile" |>.map (·.as! String)
@@ -162,16 +172,18 @@ def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
     x.size < y.size ||
       x.size = y.size && x.colors.center.length > y.colors.center.length)
 
+  have := cadicalCmd timeout
+
   IO.FS.withFile logfile .write (fun handle =>
     -- solve each board in parallel
     TaskIO.wait <| TaskIO.parUnit bs fun bdir => do
-      Log.run handle <| Log.info s!"starting board {bdir.puzFile}"
+      Log.run handle <| Log.info s!"Board {bdir.puzFile}: starting"
       try (do
         Log.run handle <| solveAndOutput bdir {}
-        Log.run handle <| Log.info s!"done board {bdir.puzFile}"
-      ) catch
+     ) catch
       | e => (
-          Log.run handle <| Log.error s!"error on board {bdir.puzFile}: {e}"
+        let msg := e.toString.dropWhile (·.isWhitespace) |>.takeWhile (· ≠ '\n')
+        Log.run handle <| Log.error s!"Board {bdir.puzFile}:\n\t{msg}"
       )
   )
 
@@ -189,9 +201,11 @@ def solveBoardSuiteCmd := `[Cli|
 
 def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
   let suite : FilePath := p.flag! "suite" |>.as! String
-  let timeout : Nat := p.flag! "timeout" |>.as! Nat
+  let timeout : Option Nat := p.flag? "timeout" |>.map (·.as! Nat)
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
+
+  have := cadicalCmd timeout
 
   testSolveTimes suite {
     useRedundant,
@@ -224,6 +238,8 @@ def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
   let sols ←
     (← System.FilePath.walkDir sols (fun f => pure <| f.extension.isEqSome "sol"))
     |>.mapM (fun f => FileFormat.BoardSol.ofFile ts f)
+
+  have := LeanSAT.Solver.Impl.ApproxMCCommand
 
   findCorrs ts sols.toList
   return 0

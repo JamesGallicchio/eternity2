@@ -3,7 +3,6 @@ import Eternity2.FileFormat.Sol
 import Eternity2.Plots.BoardSuite
 import Eternity2.Plots.GenRandom
 import Eternity2.Puzzle.SolvePuzzle
-import SolverConfig
 
 namespace Eternity2
 
@@ -40,6 +39,8 @@ def plotData (name : String)
       <| [board.puzFile.toString, toString board.size,
           toString board.colors.center, toString board.colors.border]
           ++ data
+
+variable [Solver.ApproxModelCount IO]
 
 def plotSolCounts (name suite results)
                   (encoding : {size s : _}
@@ -132,7 +133,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
               , toString puzzlesols', toString soltime_withsigns
               ]
 
-def testSolveTimes (boardsuite : FilePath) (es : SolvePuzzle.EncodingSettings)
+def testSolveTimes [Solver IO] (boardsuite : FilePath) (es : SolvePuzzle.EncodingSettings)
     : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do

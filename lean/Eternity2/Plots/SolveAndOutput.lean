@@ -8,13 +8,13 @@ open LeanSAT LeanSAT.Encode Eternity2.Encoding
 #check EncCNF
 
 /- Find solutions not already found in `bdir`, outputting them to `bdir` -/
-def solveAndOutput (bdir : BoardDir)
+def solveAndOutput [Solver IO] (bdir : BoardDir)
       (es : SolvePuzzle.EncodingSettings)
       (parallelize : Bool := false)
       : Log TaskIO Unit
   := do
   if bdir.allSols then
-    Log.info s!"board {bdir.puzFile} already solved"
+    Log.info s!"Board {bdir.puzFile}: already solved"
     return
   
   let (tsv, enc) := EncCNF.new! do
@@ -28,9 +28,12 @@ def solveAndOutput (bdir : BoardDir)
     
     return tsv
 
+  IO.FS.withFile (bdir.puzFile.withExtension "cnf") .write (fun handle =>
+    LeanSAT.Solver.Dimacs.printEnc handle.putStr enc)
+
   have : tsv.ts = bdir.ts := sorry
 
-  let name := bdir.puzFile.fileName.get!
+  let name := bdir.puzFile.toString
   let bdRef ← IO.mkRef ⟨bdir, sorry⟩
   if parallelize then
     fun handle => do
@@ -59,5 +62,5 @@ where
           let path ← bdRef.modifyGetM fun ⟨bdir,h⟩ => do
             let (path, bdir') ← bdir.addSolNextName (h ▸ sol)
             return (path, ⟨bdir', sorry⟩)
-          Log.info s!"Board {name}: Wrote solution to {path}"
+          Log.info s!"Board {name}: Wrote solution to {path.fileName.get!}"
     return

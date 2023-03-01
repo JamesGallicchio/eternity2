@@ -1,6 +1,5 @@
 import Eternity2.Puzzle.BoardSol
 import Eternity2.Puzzle.Encoding
-import SolverConfig
 
 namespace Eternity2.SolvePuzzle
 
@@ -79,7 +78,7 @@ def decodeSol
   return ⟨(sol[this.symm ▸ ·])⟩
 
 
-def solve (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
+def solve [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
   show IO _ from do
   match ← Solver.solve enc.toFormula with
   | .sat assn =>
@@ -88,7 +87,7 @@ def solve (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
     return none
 
 /-- Find all solutions -/
-def solveAll (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
+def solveAll [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
   show IO _ from do
   let dVars := tsv.diamondVarList
   let sols ← Solver.allSolutions enc.toFormula (varsToBlock := dVars)
