@@ -193,7 +193,7 @@ def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
 
-  testSolveTimes suite timeout {
+  testSolveTimes suite {
     useRedundant,
     usePolarity,
     fixCorner := true
