@@ -1,4 +1,5 @@
 import Eternity2.Puzzle.BoardSol
+import Eternity2.Puzzle.Encoding
 import SolverConfig
 
 namespace Eternity2.SolvePuzzle
@@ -31,7 +32,16 @@ def encodePuzzle (ts : TileSet size (Tile <| Color.WithBorder s)) (es : Encoding
 
   return tsv
 
-def decodeToDiamondBoard (tsv : TileSetVariables size s) (m : Assn) :=
+
+
+def encodeDiamondBoard (tsv : TileSetVariables size s) (board : DiamondBoard size (Color.WithBorder s))
+  : Assn := Id.run do
+  let mut assn : Assn := Std.HashMap.empty
+  for i in List.fins _ do
+    assn := assn.insert (tsv.diamond_vars (.ofFin i) board.board[board.boardsize.symm ▸ i]) true
+  return assn
+
+def decodeDiamondBoard (tsv : TileSetVariables size s) (m : Assn) :=
   let tb : DiamondBoard size (Option (Color.WithBorder s)) := {
     board :=
       Array.init _ (fun k =>
@@ -42,11 +52,16 @@ def decodeToDiamondBoard (tsv : TileSetVariables size s) (m : Assn) :=
   }
   tb
 
+def encodeSol (tsv : TileSetVariables size s) (sol : BoardSol tsv.ts) : Except String LeanSAT.Assn := do
+  return encodeDiamondBoard tsv <|
+    (← DiamondBoard.expectFull <|
+      .ofTileBoard (← sol.toTileBoard))
+
 def decodeSol
       (tsv : TileSetVariables size s)
       (assn : LeanSAT.Assn)
     : Except String (BoardSol tsv.ts) := do
-  let board ← decodeToDiamondBoard tsv assn |>.expectFull
+  let board ← decodeDiamondBoard tsv assn |>.expectFull
   let sol ←
     Array.initM _ (fun p => do
       match

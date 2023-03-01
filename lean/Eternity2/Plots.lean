@@ -132,50 +132,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
               , toString puzzlesols', toString soltime_withsigns
               ]
 
-/- Outputs all solutions to a given tileset as solution files in `outputFolder`. -/
-def outputAllSols (name : String) (ts : TileSet size (Tile <| Color.WithBorder s))
-      (outputFolder : FilePath)
-      (es : SolvePuzzle.EncodingSettings)
-      (parallelize : Bool := false)
-      : Log TaskIO Unit
-  := do
-  let (tsv, enc) := EncCNF.new! <| SolvePuzzle.encodePuzzle ts es
-  IO.FS.withFile (outputFolder / s!"{name}.cnf") .write fun handle =>
-    Solver.Dimacs.printEnc handle.putStrLn enc
-  let counter ← IO.mkRef 0
-  if parallelize then
-    fun handle => do
-    TaskIO.parUnit (List.fins 6) fun i => do
-      Log.run handle do
-      let ((), enc) := EncCNF.run! enc do
-        Encoding.fixCorners tsv i
-      Log.info s!"Board {name} c{i}: Starting solver"
-      solveAndOutput tsv enc s!"{name} c{i}" counter
-      Log.info s!"Board {name} c{i}: Solver finished"
-  else
-    let ((), enc) := EncCNF.run! enc do
-      Encoding.fixCorner tsv
-    solveAndOutput tsv enc name counter
-  IO.FS.writeFile (outputFolder / "done") ""
-  Log.info s!"Board {name}: All solutions found"
-where
-  solveAndOutput tsv enc name counter : Log IO _ := fun handle => do
-    let sols ← Solver.allSolutions enc.toFormula tsv.diamondVarList
-    for assn in sols do
-      Log.run handle do
-        let num ← counter.modifyGet (fun i => (i,i+1))
-        Log.info s!"Board {name}: Found solution #{num}"
-        match SolvePuzzle.decodeSol tsv assn with
-        | .error s =>
-          Log.error s!"Failed to decode board {name} solution #{num}: {s}"
-        | .ok sol =>
-        let file := outputFolder / s!"{name}_sol{num}.sol"
-        FileFormat.BoardSol.toFile file sol
-        Log.info s!"Board {name}: Wrote solution #{num} to {file}"
-
-
-def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
-    (es : SolvePuzzle.EncodingSettings)
+def testSolveTimes (boardsuite : FilePath) (es : SolvePuzzle.EncodingSettings)
     : IO Unit := do
   IO.println "size,colors,iter,runtime(ms)"
   TaskIO.wait <| TaskIO.parUnit [4:17] fun size => do
@@ -183,15 +140,14 @@ def testSolveTimes (boardsuite : FilePath) (timeout : Nat)
     let mut decreasing := true
     while decreasing && colors ≥ size+1 do
       -- Solve each of the boards in this category
-      let timedOut ← TaskIO.parTasks [0:10] fun iter => do
+      let timedOut ← TaskIO.par [0:10] fun iter => do
         let ⟨_,_,ts⟩ ← FileFormat.TileSet.ofFile (
           boardsuite / s!"{size}" / s!"{colors}" / s!"board_{iter}.puz")
         let (tsv, enc) := EncCNF.new! <| SolvePuzzle.encodePuzzle ts es
         let startTime ← IO.monoMsNow
-        let timedOut :=
-          match ← (IO.asTaskTimeout timeout <| SolvePuzzle.solveAll enc tsv) with
-          | .ok _ => false
-          | .error () => true      
+        let timedOut ←
+          try (do let _ ← SolvePuzzle.solveAll enc tsv; return false)
+          catch _ => pure true      
         let runtime := (←IO.monoMsNow) - startTime
         IO.println s!"{size},{colors},{iter},{runtime}"
         (←IO.getStdout).flush

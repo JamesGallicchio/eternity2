@@ -14,6 +14,22 @@ structure BoardDir where
   sols    : Array (FilePath × BoardSol ts)
   allSols : Bool
 
+def BoardDir.ofPuzFile (puzFile : FilePath) : IO BoardDir := do
+  let ⟨size, colors, ts⟩ ← FileFormat.TileSet.ofFile puzFile
+
+  -- get all the .sol files in the same directory
+  let solFiles ←
+    puzFile.withFileName "."
+    |>.walkDir (fun p => do return p.extension = some "sol")
+
+  -- read each sol file as a solution to ts
+  let sols ← solFiles.mapM (fun f => do
+    return (f, ← FileFormat.BoardSol.ofFile ts f))
+
+  -- check whether `done` file is present in directory (which indicates all solutions were found)
+  let allSols ← (puzFile.withFileName "done").pathExists
+  return { puzFile, size, colors, ts, sols, allSols }
+
 def BoardDir.updateFilesystem (bd : BoardDir) : IO Unit := do
   if ! (←bd.puzFile.pathExists) then
     FileFormat.TileSet.toFile bd.puzFile bd.ts
@@ -33,14 +49,23 @@ def BoardDir.addSol (bd : BoardDir) (path : FilePath) (sol : BoardSol bd.ts) : I
 
   return { bd with sols := bd.sols.push (path, sol) }
 
-def BoardDir.addSolNextName (bd : BoardDir) (sol : BoardSol bd.ts) : IO BoardDir := do
-  let mut idx := 0
+def BoardDir.addSolNextName (bd : BoardDir) (sol : BoardSol bd.ts) : IO (FilePath × BoardDir) := do
+  let mut idx := 1
   let mut path := bd.puzFile.withFileName s!"sol_{idx}.sol"
-  while ←path.pathExists do
+  while bd.sols.any (·.1 = path) do
     idx := idx+1
     path := bd.puzFile.withFileName s!"sol_{idx}.sol"
 
-  addSol bd path sol
+  let bd ← addSol bd path sol
+  return (path,bd)
+
+def BoardDir.markAllSols (bd : BoardDir) : IO BoardDir := do
+  if bd.allSols then
+    panic! "called markAllSols when already have all solutions"
+  
+  IO.FS.writeFile (bd.puzFile.withFileName "done") ""
+  
+  return {bd with allSols := true}
 
 structure BoardSuite where
   boards : Array BoardDir
@@ -49,21 +74,8 @@ namespace BoardSuite
 
 def ofDirectory (path : FilePath) : IO BoardSuite := do
   -- find all .puz files in the directory
-  let puzFiles ← path.walkDir (fun p => do return p.extension = some "puz")
+  let puzFiles ← path.walkDir
 
-  let boards ← puzFiles.mapM (fun puzFile => do
-    let ⟨size, colors, ts⟩ ← FileFormat.TileSet.ofFile puzFile
-
-    -- get all the .sol files in the same directory
-    let solFiles ←
-      puzFile.withFileName "."
-      |>.walkDir (fun p => do return p.extension = some "sol")
-
-    -- read each sol file as a solution to ts
-    let sols ← solFiles.mapM (fun f => do
-      return (f, ← FileFormat.BoardSol.ofFile ts f))
-
-    -- check whether `done` file is present in directory (which indicates all solutions were found)
-    let allSols ← (puzFile.withFileName "done").pathExists
-    return { puzFile, size, colors, ts, sols, allSols } )
+  let boards ← puzFiles.filter (·.extension = some "puz")
+                |>.mapM BoardDir.ofPuzFile
   return ⟨boards⟩

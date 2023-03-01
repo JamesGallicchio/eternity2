@@ -257,6 +257,9 @@ structure WithBorder.Settings where
 def WithBorder.Settings.size (s : WithBorder.Settings) :=
   1 + s.border.length + s.center.length
 
+instance : ToString (WithBorder.Settings) where
+  toString | {border,center} => s!"\{border := {border}, center := {center}}"
+
 inductive WithBorder (s : WithBorder.Settings)
 | frame
 | border (n : Nat) (h : n ∈ s.border)
@@ -288,6 +291,12 @@ def WithBorder.Settings.toMap (s : WithBorder.Settings) : Std.HashMap (WithBorde
     for (idx,x) in borderColors.mapIdx (fun idx x => (idx,x)) do
       have : idx < borderColors.length := sorry
       acc := acc.insert x ⟨1+idx, by simp [size, Nat.succ_add]; apply Nat.succ_lt_succ; apply Nat.lt_add_right; simp [borderColors] at this; exact this⟩
+    for (idx,x) in centerColors.mapIdx (fun idx x => (idx,x)) do
+      have : idx < centerColors.length := sorry
+      acc := acc.insert x ⟨1+(@borderColors s).length+idx, by
+        simp [size, Nat.succ_add]; apply Nat.succ_lt_succ
+        simp [borderColors]; apply Nat.add_lt_add_left
+        simp [centerColors] at this; exact this⟩
     return acc
 
 instance : ToString (WithBorder s) where
@@ -428,6 +437,51 @@ def tiles (tb : TileBoard size c) : List (Tile c) :=
 def mapColors (f : c → c') : TileBoard size c → TileBoard size c'
 | ⟨b, h⟩ => ⟨b.map (·.map (Tile.map f)), by simp [h]⟩
 
+def tile (si : SquareIndex size) (board : TileBoard size c) :=
+  have : si.row < board.board.size := board.board_size.1.symm ▸ si.row.isLt
+  have : si.col < board.board[si.row].size := by
+    have := board.board_size.2 si.row.1 this
+    simp [this]
+    exact si.col.isLt
+  board.board[si.row][si.col]
+
+def diamondAt [BEq c] (di : DiamondIndex size) (board : TileBoard size c) : Option c :=
+  match di with
+  | .vert ⟨i,hi⟩ ⟨j,hj⟩ =>
+    if h : i = 0 then
+      -- at top edge; return top of tile i,j
+      have : 0 < size := Nat.lt_of_le_of_lt (Nat.zero_le _) hj
+      some <| board.tile ⟨⟨0, this⟩,⟨j,hj⟩⟩ |>.up
+    else
+      have : i-1 < size := Nat.sub_lt_left_of_lt_add (Nat.pos_of_ne_zero h) (by rw [Nat.add_comm]; exact hi)
+      if h : i < size then
+        -- not at the bottom edge; return bottom of i-1,j
+        let t1 := board.tile ⟨⟨i-1,this⟩,⟨j,hj⟩⟩
+        let t2 := board.tile ⟨⟨i,h⟩,⟨j,hj⟩⟩
+        if t1.down == t2.up then
+          some t1.down
+        else none
+      else
+        -- at bottom edge; return bottom of tile i-1,j
+        some <| board.tile ⟨⟨i-1,this⟩,⟨j,hj⟩⟩ |>.down
+  | .horz  ⟨i,hi⟩ ⟨j,hj⟩ =>
+    if h : j = 0 then
+      -- at left edge; return left of tile i,j
+      have : 0 < size := Nat.lt_of_le_of_lt (Nat.zero_le _) hi
+      some <| board.tile ⟨⟨i,hi⟩,⟨0,this⟩⟩ |>.left
+    else
+      have : j-1 < size := Nat.sub_lt_left_of_lt_add (Nat.pos_of_ne_zero h) (by rw [Nat.add_comm]; exact hj)
+      if h : j < size then
+        -- not at the right edge; return right of i,j-1
+        let t1 := board.tile ⟨⟨i,hi⟩,⟨j-1,this⟩⟩
+        let t2 := board.tile ⟨⟨i,hi⟩,⟨j,h⟩⟩
+        if t1.right == t2.left then
+          some t1.right
+        else none
+      else
+        -- at right edge; return right of tile i,j-1
+        some <| board.tile ⟨⟨i,hi⟩,⟨j-1,this⟩⟩ |>.right
+
 end TileBoard
 
 structure DiamondBoard (size : Nat) (color : Type u) where
@@ -461,6 +515,10 @@ def tileBoard (dboard : DiamondBoard size c) : TileBoard size c :=
       dboard.diamond_to_tile row col
     ))
   , by simp⟩
+
+def ofTileBoard [BEq c] (tboard : TileBoard size c) : DiamondBoard size (Option c) :=
+  { board := Array.init _ (fun idx => tboard.diamondAt (.ofFin idx))
+  , boardsize := by simp }
 
 def expectFull (dboard : DiamondBoard size (Option c))
   : Except String (DiamondBoard size c) := do

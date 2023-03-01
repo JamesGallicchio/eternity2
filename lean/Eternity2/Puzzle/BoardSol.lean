@@ -1,6 +1,5 @@
 import Eternity2.Puzzle.Board
 import Eternity2.Puzzle.TileSet
-import Eternity2.Puzzle.Encoding
 
 namespace Eternity2
 
@@ -12,7 +11,7 @@ namespace BoardSol
 
 def toTileBoard {ts : TileSet size (Tile <| Color.WithBorder s)}
                           (sol : BoardSol ts)
-    : IO (TileBoard size (Color.WithBorder s)) := do
+    : Except String (TileBoard size (Color.WithBorder s)) := do
   let mut temp_board :=
     Array.init size (fun _ => Array.init size (fun _ => none))
   for t in List.fins _ do
@@ -20,17 +19,17 @@ def toTileBoard {ts : TileSet size (Tile <| Color.WithBorder s)}
     temp_board :=
       temp_board.set! y (temp_board[y]!.set! x (some <| ts.tiles[ts.h_ts.symm ▸ t].rotln r))
 
-  let board := Array.init size (fun y =>
-    Array.init size (fun x =>
+  let board ← Array.initM size (fun y =>
+    Array.initM size (fun x =>
       match temp_board[y]![x]! with
-      | some t => t
-      | none => panic! "Incomplete solution loaded"
+      | some t => pure t
+      | none => throw "Incomplete solution loaded"
     )
   )
 
   let tb : TileBoard size (Color.WithBorder s) := {
     board := board
-    board_size := by simp
+    board_size := sorry
   }
   return tb
 

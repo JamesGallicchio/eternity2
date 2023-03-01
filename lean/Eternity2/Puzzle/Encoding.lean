@@ -74,7 +74,10 @@ def mkVars (ts : TileSet size (Tile <| Color.WithBorder s))
   let pvs ← mkVarBlock "x" [size*size, size*size]
   let dvs ← mkVarBlock "y" [2 * (size * size.succ), s.size]
   let svs ← mkVarBlock "z" [size*size]
-  return ⟨ts, (pvs[·][·.toFin]), (dvs[·.toFin][map.find! ·]), (svs[·])⟩
+  return ⟨ts, (pvs[·][·.toFin]), (fun di c =>
+    match map.find? c with
+    | some i => dvs[di.toFin][i]
+    | none => panic! s!"{c}"), (svs[·])⟩
 
 def pieceConstraints (tsv : TileSetVariables size s) : EncCNF Unit :=
   EncCNF.newCtx "pieceConstraints" do

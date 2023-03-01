@@ -69,27 +69,26 @@ def genTileSetCmd := `[Cli|
 ]
 
 def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
-  let tileset : FilePath := p.flag! "tileset" |>.as! String
-  let output : FilePath := p.flag! "output" |>.as! String
+  let tilesetArg ← IO.ofExcept <|
+    p.flag? "tileset" |>.expectSome (fun () => "--tileset flag required")
+  let tileset : FilePath := tilesetArg.as! String
+
   let logfile : FilePath :=
     p.flag? "logfile" |>.map (·.as! String)
-      |>.getD s!"{output}.log"
+      |>.getD (tileset / s!"{tileset.fileName.get!}.log")
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
 
-  ensureDirectoryExists output
-  
   ensureFileDNEOrAskToOverwrite logfile
 
-  match ← FileFormat.TileSet.ofFile tileset with
-  | ⟨_, _, tiles⟩ =>
+  let bd ← BoardDir.ofPuzFile tileset
 
   IO.FS.writeFile logfile ""
   IO.FS.withFile logfile .append (fun handle =>
     TaskIO.wait <|
       Log.run handle <|
-        outputAllSols
-          tileset.fileStem.get! tiles output
+        solveAndOutput
+          bd
           { useRedundant, usePolarity}
           (parallelize := true)
   )
@@ -146,8 +145,50 @@ def genBoardSuiteCmd := `[Cli|
     seed : Nat; "Random seed to start with; intended for reproducibility"
 ]
 
+def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
+  let suite : FilePath := p.flag! "suite" |>.as! String
+  let timeout : Nat := p.flag! "timeout" |>.as! Nat
+
+  let logfile : FilePath :=
+    p.flag? "logfile" |>.map (·.as! String)
+      |>.getD (suite / s!"{← IO.monoMsNow}.log")
+
+  ensureDirectoryExists suite
+
+  let bs ← BoardSuite.ofDirectory suite
+
+  -- sort by board size (increasing), then by number of center colors (decreasing)
+  let bs := bs.boards.insertionSort (fun x y =>
+    x.size < y.size ||
+      x.size = y.size && x.colors.center.length > y.colors.center.length)
+
+  IO.FS.withFile logfile .write (fun handle =>
+    -- solve each board in parallel
+    TaskIO.wait <| TaskIO.parUnit bs fun bdir => do
+      Log.run handle <| Log.info s!"starting board {bdir.puzFile}"
+      try (do
+        Log.run handle <| solveAndOutput bdir {}
+        Log.run handle <| Log.info s!"done board {bdir.puzFile}"
+      ) catch
+      | e => (
+          Log.run handle <| Log.error s!"error on board {bdir.puzFile}: {e}"
+      )
+  )
+
+  return 0
+
+def solveBoardSuiteCmd := `[Cli|
+  "solve-board-suite" VIA runSolveBoardSuiteCmd; ["0.0.1"]
+  "Solve the tile sets in the provided board suite. Already-known solutions are automatically excluded, and fully solved puzzles are skipped. Outputs any new solutions to the puzzle directory."
+  
+  FLAGS:
+    suite : String; "Directory with the board suite"
+    timeout : Nat; "Timeout (in sec) to give up on solving a board"
+    logfile : String; "File to log detailed results in"
+]
+
 def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
-  let suite : FilePath := p.flag! "boardsuite" |>.as! String
+  let suite : FilePath := p.flag! "suite" |>.as! String
   let timeout : Nat := p.flag! "timeout" |>.as! Nat
   let useRedundant := p.flag! "use-redundant" |>.as! Bool
   let usePolarity := p.flag! "use-polarity" |>.as! Bool
@@ -164,7 +205,7 @@ def testSolveTimesCmd := `[Cli|
   "Sample solve times using a board suite. Outputs a CSV of the data"
 
   FLAGS:
-    boardsuite : String; "Directory with the board suite"
+    suite : String; "Directory with the board suite"
     timeout : Nat; "Timeout (in sec) to use when determining what color to stop sampling at"
     "use-redundant" : Bool; "Use redundant clauses (forbidden color & explicit piece locations)"
     "use-polarity" : Bool; "Use sign polarity constraints"
@@ -204,6 +245,7 @@ def mainCmd := `[Cli|
   SUBCOMMANDS:
     genTileSetCmd;
     genBoardSuiteCmd;
+    solveBoardSuiteCmd;
     solveTileSetCmd;
     testSolveTimesCmd;
     findSignCorrsCmd
