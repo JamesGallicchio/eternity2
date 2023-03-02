@@ -165,16 +165,18 @@ def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
 
   ensureDirectoryExists suite
 
-  let bs ← BoardSuite.ofDirectory suite
+  IO.FS.withFile logfile .write (fun handle => Log.run handle <| do
+    Log.info s!"Loading board suite from directory {suite}"
+    let bs ← BoardSuite.ofDirectory suite
+    Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
 
-  -- sort by board size (increasing), then by number of center colors (decreasing)
-  let bs := bs.boards.insertionSort (fun x y =>
-    x.size < y.size ||
-      x.size = y.size && x.colors.center.length > y.colors.center.length)
+    -- sort by board size (increasing), then by number of center colors (decreasing)
+    let bs := bs.boards.insertionSort (fun x y =>
+      x.size < y.size ||
+        x.size = y.size && x.colors.center.length > y.colors.center.length)
 
-  have := cadicalCmd timeout
+    have := cadicalCmd timeout
 
-  IO.FS.withFile logfile .write (fun handle =>
     -- solve each board in parallel
     TaskIO.wait <| TaskIO.parUnit bs fun bdir => do
       Log.run handle <| Log.info s!"Board {bdir.puzFile}: starting"
