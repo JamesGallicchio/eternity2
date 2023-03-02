@@ -28,9 +28,6 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
     
     return tsv
 
-  IO.FS.withFile (bdir.puzFile.withExtension "cnf") .write (fun handle =>
-    LeanSAT.Solver.Dimacs.printEnc handle.putStr enc)
-
   have : tsv.ts = bdir.ts := sorry
 
   let name := bdir.puzFile.toString
