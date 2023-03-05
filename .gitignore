@@ -9,8 +9,9 @@
 /lean/plots
 /lean/border_sols
 
+*.code-workspace
+.vscode
+
 *.cnf
 *.drat
-*.puz
-*.sol
 *.log
