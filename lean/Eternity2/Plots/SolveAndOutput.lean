@@ -5,13 +5,11 @@ namespace Eternity2
 
 open LeanSAT LeanSAT.Encode Eternity2.Encoding
 
-#check EncCNF
-
 /- Find solutions not already found in `bdir`, outputting them to `bdir` -/
 def solveAndOutput [Solver IO] (bdir : BoardDir)
       (es : SolvePuzzle.EncodingSettings)
       (parallelize : Bool := false)
-      : Log TaskIO Unit
+      : Log IO Unit
   := do
   if bdir.allSols then
     Log.info s!"Board {bdir.puzFile}: already solved"
@@ -33,8 +31,8 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
   let name := bdir.puzFile.toString
   let bdRef ← IO.mkRef ⟨bdir, sorry⟩
   if parallelize then
-    fun handle => do
-    TaskIO.parUnit (List.fins 6) fun i => do
+    let handle ← Log.getHandle
+    let (_ : List Unit) ← WorkQueue.launch 6 (List.fins 6) fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do
         Encoding.fixCorners tsv i
@@ -48,16 +46,15 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
   Log.info s!"Board {name}: All solutions found"
   let _ ← (← bdRef.get).1.markAllSols
 where
-  aux {size s} (tsv : TileSetVariables size s) enc name (bdRef : IO.Ref { bd : BoardDir // (BoardSol bd.ts) = (BoardSol tsv.ts) })
-    : Log IO _ := fun handle => do
-    for assn in Solver.solutions enc.toFormula tsv.diamondVarList do
-      Log.run handle <| do
-        match SolvePuzzle.decodeSol tsv assn with
-        | .error s =>
-          Log.error s!"Failed to decode board {name} solution: {s}"
-        | .ok sol =>
-          let ⟨bdir,h⟩ ← bdRef.get
-          let (path, bdir') ← bdir.addSolNextName (h ▸ sol)
-          bdRef.set ⟨bdir', sorry⟩
-          Log.info s!"Board {name}: Wrote solution to {path.fileName.get!}"
-    return
+  aux {size s} (tsv : TileSetVariables size s) enc name
+    (bdRef : IO.Ref { bd : BoardDir // (BoardSol bd.ts) = (BoardSol tsv.ts) })
+    : Log IO Unit := do
+  for assn in Solver.solutions enc.toFormula tsv.diamondVarList do
+    match SolvePuzzle.decodeSol tsv assn with
+    | .error s =>
+      Log.error s!"Failed to decode board {name} solution: {s}"
+    | .ok sol =>
+      let ⟨bdir,h⟩ ← bdRef.get
+      let (path, bdir') ← bdir.addSolNextName (h ▸ sol)
+      bdRef.set ⟨bdir', sorry⟩
+      Log.info s!"Board {name}: Wrote solution to {path.fileName.get!}"

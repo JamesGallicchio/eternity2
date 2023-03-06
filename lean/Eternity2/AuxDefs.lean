@@ -41,9 +41,13 @@ def warn : String → Log m Unit := write "WARN"
 def error : String → Log m Unit := write "ERROR"
 
 def run (logfile : IO.FS.Handle) (la : Log m α) : m α := la logfile
+def getHandle : Log m IO.FS.Handle := λ path => pure path
 
 instance [Monad m] [Monad n] [MonadLift m n] : MonadLift (Log m) (Log n) where
   monadLift mla := fun handle => liftM <| Log.run handle mla
+
+instance [Monad m] [ForIn m ρ α] : ForIn (Log m) ρ α where
+  forIn r acc f := fun handle => ForIn.forIn r acc (f · · handle)
 
 end Log
 
@@ -140,3 +144,37 @@ where randPermTR (L acc n) := do
     randPermTR xs acc' (n+1)
 
 end RandomM
+
+def WorkQueue.launch [Monad m] [MonadLift IO m] (threads : Nat) (jobs : List α) (f : α → IO β) : m (List β) := do
+  let queue ← IO.Mutex.new (jobs.mapIdx (·, ·))
+  let results : IO.Mutex (List (Nat × β)) ← IO.Mutex.new []
+  
+  let tasks : List (Task (Except _ Unit)) ←
+    (List.range threads).mapM (fun _ => IO.asTask (do
+      let mut curJob : Option (Nat × α) ← nextJob queue
+      
+      while h : curJob.isSome do
+        let (idx,job) := curJob.get h
+        let b ← f job
+        results.atomically (do
+          let list ← get
+          set ((idx,b) :: list)
+        )
+        curJob ← nextJob queue
+    ))
+  
+  let res ← IO.mapTasks (fun L => do
+      L.foldlM (fun () => IO.ofExcept) ()
+      let res ← results.atomically get
+      return res.toArray.insertionSort (·.1 < ·.1) |>.toList.map (·.2)
+    ) tasks
+
+  return ← IO.ofExcept res.get
+where nextJob (queue : IO.Mutex _) : IO (Option (Nat × α)) :=
+  queue.atomically (do
+    match (← get) with
+    | job :: jobs =>
+      set jobs
+      return some job
+    | [] =>
+      return none)

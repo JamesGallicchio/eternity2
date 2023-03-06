@@ -4,6 +4,7 @@ import Eternity2.FileFormat.Sol
 import Eternity2.Plots.BoardSuite
 import Eternity2.Plots.GenRandom
 import Eternity2.Plots.SolveAndOutput
+import Eternity2.Plots.SolveBoardSuite
 import Eternity2.Plots
 import Eternity2.Puzzle.Board
 import Eternity2.Puzzle.BoardSol

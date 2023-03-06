@@ -183,8 +183,17 @@ def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables size s)
 partial def findCorrs (ts : TileSet size (Tile <| Color.WithBorder s)) (sols : List (BoardSol ts)) : IO Unit := do
   let (tsv, enc) := EncCNF.new! do
     let tsv ← Encoding.mkVars ts
-    Encoding.colorCardConstraints tsv
-    Encoding.signCardConstraints tsv
+    do
+      Encoding.colorCardConstraints tsv
+      Encoding.signCardConstraints tsv
+    if h:0 < size*size then EncCNF.addClause (tsv.sign_vars ⟨0,h⟩)
+    return tsv
+
+  let encElim := EncCNF.new! do
+    do
+      Encoding.colorCardConstraints tsv
+      Encoding.signCardConstraints tsv
+      Encoding.EncCard.gaussElim
     if h:0 < size*size then EncCNF.addClause (tsv.sign_vars ⟨0,h⟩)
     return tsv
 
