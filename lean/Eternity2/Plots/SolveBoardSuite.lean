@@ -4,13 +4,14 @@ import LeanSAT.Solver
 
 namespace Eternity2
 
-def solveBoardSuite [LeanSAT.Solver IO] (n : Nat) (suite : System.FilePath) : Log IO Unit := do
-  Log.info s!"Loading board suite from directory {suite}"
-  let bs ← BoardSuite.ofDirectory suite
-  Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
-  
+def solveBoardSuite [LeanSAT.Solver IO] (n : Nat) (suite : BoardSuite) : Log IO Unit := do
+  -- look only at boards that are not fully solved yet
+  let unsolved := suite.boards.filter (!·.allSols)
+
+  Log.info s!"{suite.boards.size - unsolved.size} already solved, {unsolved.size} to be solved"
+
   -- sort by board size (increasing), then by number of center colors (decreasing)
-  let bs := bs.boards.insertionSort (fun x y =>
+  let bs := unsolved.insertionSort (fun x y =>
     x.size < y.size ||
       x.size = y.size && x.colors.center.length > y.colors.center.length)
 

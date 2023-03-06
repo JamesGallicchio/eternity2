@@ -171,7 +171,13 @@ def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
 
   have := cadicalCmd timeout
 
-  IO.FS.withFile logfile .write (Log.run · <| solveBoardSuite threads suite)
+  IO.FS.withFile logfile .write (Log.run · <| do
+    Log.info s!"Loading board suite from directory {suite}"
+    let bs ← BoardSuite.ofDirectory suite
+    Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
+    
+    solveBoardSuite threads bs
+  )
 
   return 0
 
