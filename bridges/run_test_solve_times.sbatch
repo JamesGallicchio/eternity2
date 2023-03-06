@@ -10,4 +10,7 @@
 #echo commands to stdout
 set -x
 
-~/eternity2/bridges/run_test_solve_times.sh $SLURM_JOB_ID "$@"
+BOARD_SUITE=~/eternity2/puzzles/board_suite
+LOG_FILE=~/log/test_times_$SLURM_JOB_ID.csv
+
+~/eternity2/lean/build/bin/eternity2 test-solve-times --boardsuite $BOARD_SUITE "${@}" > $LOG_FILE
