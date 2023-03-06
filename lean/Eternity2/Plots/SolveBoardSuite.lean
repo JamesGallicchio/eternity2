@@ -20,11 +20,9 @@ def solveBoardSuite [LeanSAT.Solver IO] (n : Nat) (suite : BoardSuite) : Log IO 
   -- solve each board in parallel, using `n` threads
   let (_ : List Unit) ← WorkQueue.launch n bs.toList (fun bdir => do
     Log.run handle <| Log.info s!"Board {bdir.puzFile}: starting"
-    try (do
+    try
       Log.run handle <| solveAndOutput bdir {}
-   ) catch
-    | e => (do
+    catch e =>
       let msg := e.toString.dropWhile (·.isWhitespace) |>.takeWhile (· ≠ '\n')
       Log.run handle <| Log.error s!"Board {bdir.puzFile}:\n\t{msg}"
-    )
   )
