@@ -1,6 +1,7 @@
 /- Implement constraints as described in Heule 2008 -/
 
 import Eternity2.Puzzle.TileSet
+import Eternity2.Puzzle.CardConstraint
 
 namespace Eternity2.Encoding
 
@@ -372,64 +373,57 @@ border- or center-color, the `c`-colored triangles
 must be half `+` and half `-`.
 -/
 def colorCardConstraints (tsv : TileSetVariables size s)
-  : EncCNF Unit := EncCNF.newCtx "colorCardConstraints" do
+  : EncCard Unit := do
   for color in Color.borderColors ++ Color.centerColors do
-    EncCNF.newCtx s!"{color}" do
-      let cVars :=
-        List.fins (size*size) |>.bind (fun idx =>
-          let t := tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx]
-          let var := tsv.sign_vars idx
-          t.colors.filter (· = color) |>.map (fun _ => var))
-      let pos : Array Literal := Array.mk <| cVars.map (.pos)
-      assert! (pos.size % 2 = 0) -- handshake lemma :)
-      equalK pos (pos.size / 2)
+    let cVars :=
+      List.fins (size*size) |>.bind (fun idx =>
+        let t := tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx]
+        let var := tsv.sign_vars idx
+        t.colors.filter (· = color) |>.map (fun _ => var))
+    let pos := cVars.map (.pos)
+    assert! (pos.length % 2 = 0) -- handshake lemma :)
+    EncCard.addClause <| .ofLits pos (pos.length / 2)
 
 def signCardConstraints (tsv : TileSetVariables size s)
-  : EncCNF Unit := do
+  : EncCard Unit := do
   if size % 2 == 0 then
     /- Half the corners should be pos -/
     let corner_vars := List.fins (size*size)
       |>.filter (fun idx => tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx].isCorner)
       |>.map (.pos <| tsv.sign_vars ·)
-      |> Array.mk
-    assert! corner_vars.size == 4
-    equalK corner_vars 2
+    assert! corner_vars.length == 4
+    EncCard.addClause <| .ofLits corner_vars 2
     /- Half the side pieces should be pos -/
     let side_vars := List.fins (size*size)
       |>.filter (fun idx => tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx].isSide)
       |>.map (.pos <| tsv.sign_vars ·)
-      |> Array.mk
-    assert! side_vars.size == 4*(size-2)
-    equalK side_vars (2*(size-2))
+    assert! side_vars.length == 4*(size-2)
+    EncCard.addClause <| .ofLits side_vars (2*(size-2))
     /- Half the center pieces should be pos -/
     let center_vars := List.fins (size*size)
       |>.filter (fun idx => tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx].isCenter)
       |>.map (.pos <| tsv.sign_vars ·)
-      |> Array.mk
-    assert! center_vars.size == (size-2)*(size-2)
-    equalK center_vars ((size-2) * (size-2) / 2)
+    assert! center_vars.length == (size-2)*(size-2)
+    EncCard.addClause <| .ofLits center_vars ((size-2) * (size-2) / 2)
   else
     /- All the corners should be pos -/
     let corner_vars := List.fins (size*size)
       |>.filter (fun idx => tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx].isCorner)
       |>.map (.pos <| tsv.sign_vars ·)
-      |> Array.mk
-    assert! corner_vars.size == 4
-    equalK corner_vars 4
+    assert! corner_vars.length == 4
+    EncCard.addClause <| .ofLits corner_vars 4
     /- Half - 2 of the side pieces should be pos -/
     let side_vars := List.fins (size*size)
       |>.filter (fun idx => tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx].isSide)
       |>.map (.pos <| tsv.sign_vars ·)
-      |> Array.mk
-    assert! side_vars.size == 4*(size-2)
-    equalK side_vars (2*(size-3))
+    assert! side_vars.length == 4*(size-2)
+    EncCard.addClause <| .ofLits side_vars (2*(size-3))
     /- Half (round up) the center pieces should be pos -/
     let center_vars := List.fins (size*size)
       |>.filter (fun idx => tsv.ts.tiles[tsv.ts.h_ts.symm ▸ idx].isCenter)
       |>.map (.pos <| tsv.sign_vars ·)
-      |> Array.mk
-    assert! center_vars.size == (size-2)*(size-2)
-    equalK center_vars (((size-2) * (size-2) + 1) / 2)
+    assert! center_vars.length == (size-2)*(size-2)
+    EncCard.addClause <| .ofLits center_vars (((size-2) * (size-2) + 1) / 2)
 
 def associatePolarities (ts : TileSetVariables size s) : EncCNF Unit := do
   -- For each piece & location, positive location -> positive piece, negative location -> negative piece
