@@ -4,7 +4,7 @@ import LeanSAT.Solver
 
 namespace Eternity2
 
-def solveBoardSuite [LeanSAT.Solver IO] (n : Nat) (suite : BoardSuite) : Log IO Unit := do
+def solveBoardSuite [LeanSAT.Solver IO] (suite : BoardSuite) : Log IO Unit := do
   -- look only at boards that are not fully solved yet
   let unsolved := suite.boards.filter (!·.allSols)
 
@@ -18,7 +18,7 @@ def solveBoardSuite [LeanSAT.Solver IO] (n : Nat) (suite : BoardSuite) : Log IO 
   let handle ← Log.getHandle
   
   -- solve each board in parallel, using `n` threads
-  let (_ : List Unit) ← WorkQueue.launch n bs.toList (fun bdir => do
+  let (_ : List Unit) ← bs.toList.parMap (fun bdir => do
     Log.run handle <| Log.info s!"Board {bdir.puzFile}: starting"
     try
       Log.run handle <| solveAndOutput bdir {}

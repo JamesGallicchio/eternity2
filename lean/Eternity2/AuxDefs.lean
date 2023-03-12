@@ -145,36 +145,7 @@ where randPermTR (L acc n) := do
 
 end RandomM
 
-def WorkQueue.launch [Monad m] [MonadLift IO m] (threads : Nat) (jobs : List α) (f : α → IO β) : m (List β) := do
-  let queue ← IO.Mutex.new (jobs.mapIdx (·, ·))
-  let results : IO.Mutex (List (Nat × β)) ← IO.Mutex.new []
-  
-  let tasks : List (Task (Except _ Unit)) ←
-    (List.range threads).mapM (fun _ => IO.asTask (do
-      let mut curJob : Option (Nat × α) ← nextJob queue
-      
-      while h : curJob.isSome do
-        let (idx,job) := curJob.get h
-        let b ← f job
-        results.atomically (do
-          let list ← get
-          set ((idx,b) :: list)
-        )
-        curJob ← nextJob queue
-    ))
-  
-  let res ← IO.mapTasks (fun L => do
-      L.foldlM (fun () => IO.ofExcept) ()
-      let res ← results.atomically get
-      return res.toArray.insertionSort (·.1 < ·.1) |>.toList.map (·.2)
-    ) tasks
-
+def List.parMap (jobs : List α) (f : α → IO β) : IO (List β) := do
+  let tasks ← jobs.mapM (IO.asTask <| f ·)
+  let res ← IO.mapTasks (·.mapM IO.ofExcept) tasks
   return ← IO.ofExcept res.get
-where nextJob (queue : IO.Mutex _) : IO (Option (Nat × α)) :=
-  queue.atomically (do
-    match (← get) with
-    | job :: jobs =>
-      set jobs
-      return some job
-    | [] =>
-      return none)

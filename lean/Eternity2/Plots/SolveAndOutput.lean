@@ -32,7 +32,7 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
   let bdRef ← IO.mkRef ⟨bdir, sorry⟩
   if parallelize then
     let handle ← Log.getHandle
-    let (_ : List Unit) ← WorkQueue.launch 6 (List.fins 6) fun i => do
+    let (_ : List Unit) ← (List.fins 6).parMap fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do
         Encoding.fixCorners tsv i
