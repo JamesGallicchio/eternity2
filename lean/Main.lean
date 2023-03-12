@@ -158,10 +158,6 @@ def genBoardSuiteCmd := `[Cli|
 def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
   let suite : FilePath := p.flag! "suite" |>.as! String
   let timeout : Option Nat := p.flag? "timeout" |>.map (·.as! Nat)
-  let threads : Nat ←
-    p.flag? "threads" |>.map (·.as! Nat)
-    |>.expectSome (fun () => "--threads flag required")
-    |> IO.ofExcept
 
   let logfile : FilePath :=
     p.flag? "logfile" |>.map (·.as! String)
@@ -188,7 +184,6 @@ def solveBoardSuiteCmd := `[Cli|
   FLAGS:
     suite : String; "Directory with the board suite"
     timeout : Nat; "Timeout (in sec) to give up on solving a board"
-    threads : Nat; "Number of threads to use"
     logfile : String; "File to log detailed results in"
 ]
 
