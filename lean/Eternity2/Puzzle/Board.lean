@@ -376,22 +376,66 @@ inductive ClassifyRes (c)
 inductive ClassifyIsFrame (c) | frame | notframe (v : c)
 
 def classifyGen {c c' : Type} [DecidableEq c] (f : c → ClassifyIsFrame c') (t : Tile c)
-  : Option (ClassifyRes c') :=
+  : Option (Nat × ClassifyRes c') :=
   aux 0 |>.orElse fun () => aux 1 |>.orElse fun () => aux 2 |>.orElse fun () => aux 3
-where aux (n : Nat) : Option (ClassifyRes c') :=
+where aux (n : Nat) : Option (Nat × ClassifyRes c') :=
   match t.rotln n with
   | {up, right, down, left, sign := _} =>
   match f up, f right, f down, f left with
   | .notframe up, .notframe right, .frame, .frame =>
-    some (.corner up right)
+    some (n, .corner up right)
   | .notframe up, .notframe right, .notframe down, .frame =>
-    some (.side up right down)
+    some (n, .side up right down)
   | .notframe up, .notframe right, .notframe down, .notframe left =>
-    some (.center up right down left)
+    some (n, .center up right down left)
   | _, _, _, _ => none
 
-def classify {s} := classifyGen (fun c =>
-  if @Color.WithBorder.isFrame s c then .frame else .notframe c)
+def classify {s} (t) :=
+  classifyGen (fun c =>
+    if @Color.WithBorder.isFrame s c then .frame else .notframe c)
+    t
+  |>.map (·.snd)
+
+def mapToColorWithBorder [DecidableEq c] (f : c → ClassifyIsFrame Nat) (t : Tile c)
+  : List Nat × List Nat × ((s : Color.WithBorder.Settings) → Except String (Tile (Color.WithBorder s))) :=
+  let res := classifyGen f t
+  let (newB, newC) :=
+    (match res with
+    | none => ([],[])
+    | some (_, .corner u r) => ([u,r], [])
+    | some (_, .side u r d) => ([u,d], [r])
+    | some (_, .center u r d l) => ([], [u,r,d,l]))
+  (newB, newC, fun s => do
+  match ← res.map (Except.ok) |>.getD (Except.error "failed to classify") with
+  | (n, .corner u r) =>
+    if h:u ∈ s.border ∧ r ∈ s.border then
+      return Tile.rotln ((4-n) % 4)
+        { up := .border u h.1
+        , right := .border r h.2
+        , down := .frame
+        , left := .frame
+        , sign := t.sign }
+    else throw s!"color configuration mismatch: s={s}; border {u}, {r} expected"
+  | (n, .side u r d) =>
+    if h:u ∈ s.border ∧ r ∈ s.center ∧ d ∈ s.border then
+      return Tile.rotln ((4-n) % 4)
+        { up := .border u h.1
+        , right := .center r h.2.1
+        , down := .border d h.2.2
+        , left := .frame
+        , sign := t.sign }
+    else throw s!"color configuration mismatch: s={s}; border {u}, {d}, center {r} expected"
+  | (n, .center u r d l) =>
+    if h:u ∈ s.center ∧ r ∈ s.center ∧ d ∈ s.center ∧ l ∈ s.center then
+      return Tile.rotln ((4-n) % 4)
+        { up := .center u h.1
+        , right := .center r h.2.1
+        , down := .center d h.2.2.1
+        , left := .center l h.2.2.2
+        , sign := t.sign }
+    else throw s!"color configuration mismatch: s={s}; center {u}, {r}, {d}, {l} expected"
+  )
+
 
 def isCorner (tile : Tile (Color.WithBorder s)) : Bool :=
   match classify tile with

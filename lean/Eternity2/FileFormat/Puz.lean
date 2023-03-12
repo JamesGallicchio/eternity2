@@ -63,35 +63,13 @@ def ofFileFormat (s : String) :
   if tiles.all (·.colors.all (· > 0)) then
     throw "Appears to be an unframed puzzle; these are not yet supported."
 
-  let (borderColors, centerColors) ←
-    tiles.foldlM (fun (bc,cc) y => do
-      match y.classifyGen (fun | 0 => .frame | n+1 => .notframe n) with
-      | none => throw s!"Piece has an invalid shape: {y}"
-      | some (.corner x y) => return (x::y::bc, cc)
-      | some (.side x y z) => return (x::z::bc, y::cc)
-      | some (.center w x y z) => return (bc, w::x::y::z::cc))
-    ([],[])
-
-  let borderColors := borderColors.distinct
-  let centerColors := centerColors.distinct
-
+  let tiles := tiles.map (·.mapToColorWithBorder (fun | 0 => .frame | n+1 => .notframe n))
+  let borderColors := tiles.map (·.1) |>.join.distinct
+  let centerColors := tiles.map (·.2.1) |>.join.distinct
   let s : Color.WithBorder.Settings := ⟨borderColors,centerColors⟩
 
-  let tileMap (t : Tile Nat) : Except String (Tile (Color.WithBorder s)) := do
-    match t.classifyGen (fun | 0 => .frame | n+1 => .notframe n) with
-    | none => throw "misclassified even though should have errored earlier? 5467654"
-    | some (.corner x y) =>
-      return {  up   := .border x sorry , right := .border y sorry
-             ,  down := .frame          , left  := .frame         , sign := t.sign }
-    | some (.side x y z) =>
-      return {  up   := .border x sorry , right := .center y sorry
-             ,  down := .border z sorry , left  := .frame         , sign := t.sign }
-    | some (.center w x y z) =>
-      return {  up   := .center w sorry , right := .center x sorry
-             ,  down := .center y sorry , left  := .center z sorry, sign := t.sign }
+  let tiles : List (Tile (Color.WithBorder s)) ← tiles.mapM (·.2.2 s)
 
-
-  let tiles ← tiles.mapM (tileMap)
   if h : tiles.length = size * size then
     return ⟨size, s, tiles, h⟩
   else
