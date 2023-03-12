@@ -159,9 +159,9 @@ private def classify (t : Tile (Color.WithBorder s))
   : PieceClass (Color.WithBorder s) :=
   match t.classify with
   | none => panic! s!"Encountered invalid piece during solving:\n{t.toString}"
-  | some ⟨_, .corner x y _⟩ => .corner x y
-  | some ⟨_, .side x y z _⟩ => .side x y z
-  | some ⟨_, .center w x y z _⟩ =>
+  | some (.corner x y) => .corner x y
+  | some (.side x y z) => .side x y z
+  | some (.center w x y z) =>
   /- so much casework-/
   if w = x && x = y && y = z then
     .fourSame w

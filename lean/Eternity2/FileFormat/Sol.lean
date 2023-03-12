@@ -2,16 +2,18 @@ import Eternity2.Puzzle.BoardSol
 
 namespace Eternity2.FileFormat.BoardSol
 
+def toFileFormat [BEq c] {ts : TileSet size c} (sol : BoardSol ts) : String :=
+  Id.run do
+    let mut res := ""
+    for i in List.fins _ do
+      let ({row,col},rot) := sol.pieceIdx i
+      res := res ++ s!"{i} {col} {row} {rot}\n"
+    return res
+
 def toFile (filename : System.FilePath)
     [BEq c] {ts : TileSet size c} (sol : BoardSol ts)
-                : IO Unit := do
-  IO.FS.withFile filename .write (fun h => do
-    h.putStrLn "c pieceNum x y rotation"
-    h.putStrLn ""
-    for i in List.fins _ do
-      let (⟨x,y⟩,rot) := sol.pieceIdx i
-      h.putStrLn s!"{i} {x} {y} {rot}"
-  )
+                : IO Unit :=
+  IO.FS.withFile filename .write (·.putStr (toFileFormat sol))
 
 def ofFileFormat (contents : String)
                  (ts : TileSet size (Tile <| Color.WithBorder s))
@@ -26,28 +28,28 @@ def ofFileFormat (contents : String)
   let array ← Array.initM (size*size) (fun i => do
       match data.find? i with
       | none => throw s!"Piece {i} is missing from solution"
-      | some (x,y,r) => pure (⟨x,y⟩,r))
+      | some (col,row,r) => pure ({row,col},r))
   have : array.size = size*size := sorry
   return ⟨(array[this.symm ▸ ·])⟩
 
 where parseLine : String → Except String (Fin _ × Fin _ × Fin _ × Fin 4) := fun line => do
     match line.splitOn " " with
-    | [t, x, y, r] => (
-      match (t.toNat?, x.toNat?, y.toNat?, r.toNat?) with
-      | (some t, some x, some y, some r) =>
+    | [t, col, row, r] => (
+      match (t.toNat?, col.toNat?, row.toNat?, r.toNat?) with
+      | (some t, some col, some row, some r) =>
         if ht : t ≥ size*size then
           throw s!"Tile index out of range: {line}"
-        else if hx : x ≥ size then
-          throw s!"Row {x} out of range: {line}"
-        else if hy : y ≥ size then
-          throw s!"Col {y} out of range: {line}"
+        else if hx : col ≥ size then
+          throw s!"Col {col} out of range: {line}"
+        else if hy : row ≥ size then
+          throw s!"Row {row} out of range: {line}"
         else if hr : r ≥ 4 then
           throw s!"Rotation {r} out of range: {line}"
         else
         return (
           ⟨t,Nat.not_ge_eq _ _ ▸ ht⟩,
-          ⟨x,Nat.not_ge_eq _ _ ▸ hx⟩,
-          ⟨y,Nat.not_ge_eq _ _ ▸ hy⟩,
+          ⟨col,Nat.not_ge_eq _ _ ▸ hx⟩,
+          ⟨row,Nat.not_ge_eq _ _ ▸ hy⟩,
           ⟨r, by rw [Nat.not_ge_eq] at hr; exact hr⟩)
       | _ => throw s!"Could not parse integers on line: {line}"
     )

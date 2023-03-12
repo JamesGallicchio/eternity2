@@ -105,8 +105,8 @@ def boardSuite (seed : Nat) (output : System.FilePath) : IO BoardSuite := do
         let gen := mkStdGen <| (hash [seed, size, colors, iter]).toNat
         let colors :=
           let border := Nat.sqrt size + 1
-          { border := List.range border |>.map (·+1)
-          , center := List.range colors |>.map (·+1+border) }
+          { border := List.range border
+          , center := List.range colors |>.map (·+border) }
         let b ←
           GenRandom.board size colors
           |> RandomM.run gen
@@ -127,3 +127,18 @@ def boardSuite (seed : Nat) (output : System.FilePath) : IO BoardSuite := do
           }
         boards := boards.push bd
   return ⟨boards⟩
+
+#eval show IO _ from do
+  let db ← IO.ofExcept <| (← board 4 ⟨List.range 3, List.range 5⟩)
+  let tb := db.tileBoard
+  IO.println tb
+
+  let ⟨ts,b⟩ ← (BoardSol.ofTileBoard tb).2.scramble
+
+  IO.println ts
+  IO.println <| FileFormat.TileSet.toFileFormat ts
+  IO.println <| FileFormat.BoardSol.toFileFormat b
+
+  let tb' ← IO.ofExcept b.toTileBoard
+
+  IO.println tb'

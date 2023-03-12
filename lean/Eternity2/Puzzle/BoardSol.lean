@@ -15,13 +15,13 @@ def toTileBoard {ts : TileSet size (Tile <| Color.WithBorder s)}
   let mut temp_board :=
     Array.init size (fun _ => Array.init size (fun _ => none))
   for t in List.fins _ do
-    let (⟨x,y⟩,r) := sol.pieceIdx t
+    let ({row,col},r) := sol.pieceIdx t
     temp_board :=
-      temp_board.set! y (temp_board[y]!.set! x (some <| ts.tiles[ts.h_ts.symm ▸ t].rotln r))
+      temp_board.set! row (temp_board[row]!.set! col (some <| ts.tiles[ts.h_ts.symm ▸ t].rotln r))
 
-  let board ← Array.initM size (fun y =>
-    Array.initM size (fun x =>
-      match temp_board[y]![x]! with
+  let board ← Array.initM size (fun row =>
+    Array.initM size (fun col =>
+      match temp_board[row]![col]! with
       | some t => pure t
       | none => throw "Incomplete solution loaded"
     )
@@ -36,15 +36,15 @@ def toTileBoard {ts : TileSet size (Tile <| Color.WithBorder s)}
 def ofTileBoard (tb : TileBoard size (Color.WithBorder s))
   : Σ ts : TileSet size (Tile <| Color.WithBorder s), BoardSol ts :=
   let withIdx : Array (SquareIndex size × Tile _) :=
-    (Array.init size fun i => Array.init size fun j =>
-      (⟨i,j⟩,tb.board[tb.board_size.1.symm ▸ i][(tb.board_size.2 _ _).symm ▸ j])
+    (Array.init size fun row => Array.init size fun col =>
+      ({row,col},tb.board[tb.board_size.1.symm ▸ row][(tb.board_size.2 _ _).symm ▸ col])
     ).flatten
   have : withIdx.size = size*size := sorry
   ⟨ ⟨withIdx.map (·.2) |>.toList, sorry⟩
   , ⟨fun idx => (withIdx[this.symm ▸ idx].1, 0)⟩
   ⟩
 
-/- Randomly rotate the tiles, and mix up their order -/
+/- Rotate the tiles randomly. Also mix up their order -/
 def scramble {ts : TileSet size (Tile <| Color.WithBorder s)} (sol : BoardSol ts)
   : RandomM ((ts : TileSet size (Tile <| Color.WithBorder s)) × BoardSol ts) := do
   /- Rotate the pieces -/
@@ -66,5 +66,5 @@ def scramble {ts : TileSet size (Tile <| Color.WithBorder s)} (sol : BoardSol ts
   let sol := Array.init (size*size) (fun i =>
     let (old_i, rot, tile) := all[h_all.symm ▸ i]
     let (pos, old_rot) := sol.pieceIdx old_i
-    (pos,rot+old_rot))
+    (pos,(old_rot+4-rot)%4))
   return ⟨⟨tiles, h_tiles⟩, ⟨(sol[·])⟩⟩

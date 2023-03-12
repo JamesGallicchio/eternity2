@@ -5,7 +5,7 @@ namespace Eternity2.FileFormat.TileSet
 def toFileFormat.color (c : Color.WithBorder s) : String :=
   match c with
   | .frame => "0"
-  | .border n _ | .center n _ => toString n
+  | .border n _ | .center n _ => toString (n+1)
 
 def toFileFormat.tile (t : Tile (Color.WithBorder s)) : String :=
   s!"{color t.up} {color t.right} {color t.down} {color t.left}{
@@ -65,11 +65,11 @@ def ofFileFormat (s : String) :
 
   let (borderColors, centerColors) ←
     tiles.foldlM (fun (bc,cc) y => do
-      match y.classifyGen 0 with
+      match y.classifyGen (fun | 0 => .frame | n+1 => .notframe n) with
       | none => throw s!"Piece has an invalid shape: {y}"
-      | some ⟨_, .corner x y _⟩ => return (x::y::bc, cc)
-      | some ⟨_, .side x y z _⟩ => return (x::z::bc, y::cc)
-      | some ⟨_, .center w x y z _⟩ => return (bc, w::x::y::z::cc))
+      | some (.corner x y) => return (x::y::bc, cc)
+      | some (.side x y z) => return (x::z::bc, y::cc)
+      | some (.center w x y z) => return (bc, w::x::y::z::cc))
     ([],[])
 
   let borderColors := borderColors.distinct
@@ -78,15 +78,15 @@ def ofFileFormat (s : String) :
   let s : Color.WithBorder.Settings := ⟨borderColors,centerColors⟩
 
   let tileMap (t : Tile Nat) : Except String (Tile (Color.WithBorder s)) := do
-    match t.classifyGen 0 with
+    match t.classifyGen (fun | 0 => .frame | n+1 => .notframe n) with
     | none => throw "misclassified even though should have errored earlier? 5467654"
-    | some ⟨n, .corner x y _⟩ =>
+    | some (.corner x y) =>
       return {  up   := .border x sorry , right := .border y sorry
              ,  down := .frame          , left  := .frame         , sign := t.sign }
-    | some ⟨n, .side x y z _⟩ =>
+    | some (.side x y z) =>
       return {  up   := .border x sorry , right := .center y sorry
              ,  down := .border z sorry , left  := .frame         , sign := t.sign }
-    | some ⟨n, .center w x y z _⟩ =>
+    | some (.center w x y z) =>
       return {  up   := .center w sorry , right := .center x sorry
              ,  down := .center y sorry , left  := .center z sorry, sign := t.sign }
 

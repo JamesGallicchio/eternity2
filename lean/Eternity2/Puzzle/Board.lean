@@ -368,39 +368,44 @@ def colors : Tile c → List c
 def hasColor [BEq c] (tile : Tile c) (color : c) : Bool :=
   tile.colors.contains color
 
-inductive ClassifyRes (frame : c) (tile : Tile c)
-| corner (u r)     (h : ¬(u = frame) ∧ ¬(r = frame))
-| side   (u r d)   (h : ¬(u = frame) ∧ ¬(r = frame) ∧ ¬(d = frame))
-| center (u r d l) (h : ¬(u = frame) ∧ ¬(r = frame) ∧ ¬(d = frame) ∧ ¬(l = frame))
+inductive ClassifyRes (c)
+| corner (u r     : c)
+| side   (u r d   : c)
+| center (u r d l : c)
 
-def classifyGen [DecidableEq c] (f : c) (t : Tile c) : Option (Σ' n, ClassifyRes f (rotln n t)) :=
+inductive ClassifyIsFrame (c) | frame | notframe (v : c)
+
+def classifyGen {c c' : Type} [DecidableEq c] (f : c → ClassifyIsFrame c') (t : Tile c)
+  : Option (ClassifyRes c') :=
   aux 0 |>.orElse fun () => aux 1 |>.orElse fun () => aux 2 |>.orElse fun () => aux 3
-where aux (n : Nat) : Option (Σ' n, ClassifyRes f (rotln n t)) :=
+where aux (n : Nat) : Option (ClassifyRes c') :=
   match t.rotln n with
   | {up, right, down, left, sign := _} =>
-  if h : ¬(up = f) ∧ ¬(right = f) ∧ down = f ∧ left = f then
-    some ⟨n, .corner up right (by simp [*])⟩
-  else if h : ¬(up = f) ∧ ¬(right = f) ∧ ¬(down = f) ∧ left = f then
-    some ⟨n, .side up right down (by simp [*])⟩
-  else if h : ¬(up = f) ∧ ¬(right = f) ∧ ¬(down = f) ∧ ¬(left = f) then
-    some ⟨n, .center up right down left (by simp [*])⟩
-  else none
+  match f up, f right, f down, f left with
+  | .notframe up, .notframe right, .frame, .frame =>
+    some (.corner up right)
+  | .notframe up, .notframe right, .notframe down, .frame =>
+    some (.side up right down)
+  | .notframe up, .notframe right, .notframe down, .notframe left =>
+    some (.center up right down left)
+  | _, _, _, _ => none
 
-def classify {s} := classifyGen (@Color.WithBorder.frame s)
+def classify {s} := classifyGen (fun c =>
+  if @Color.WithBorder.isFrame s c then .frame else .notframe c)
 
 def isCorner (tile : Tile (Color.WithBorder s)) : Bool :=
   match classify tile with
-  | .some ⟨_, .corner _ _ _⟩ => true
+  | .some (.corner _ _) => true
   | _ => false 
 
 def isSide (tile : Tile (Color.WithBorder s)) : Bool :=
   match classify tile with
-  | .some ⟨_, .side _ _ _ _⟩ => true
+  | .some (.side _ _ _) => true
   | _ => false 
 
 def isCenter (tile : Tile (Color.WithBorder s)) : Bool :=
   match classify tile with
-  | .some ⟨_, .center _ _ _ _ _⟩ => true
+  | .some (.center _ _ _ _) => true
   | _ => false 
 
 def validate (tile : Tile (Color.WithBorder s)) : Bool :=
