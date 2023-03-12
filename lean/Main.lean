@@ -242,6 +242,29 @@ def findSignCorrsCmd := `[Cli|
     logfile : String; "File for detailed logs"
 ]
 
+def runVisualizeSolCmd (p : Parsed) : IO UInt32 := do
+  let tileset : String ← IO.ofExcept <|
+    p.flag? "tileset" |>.map (·.as! String) |>.expectSome fun () => "--tileset <file> argument missing"
+  let sol : String ← IO.ofExcept <|
+    p.flag? "sol" |>.map (·.as! String) |>.expectSome fun () => "--sol <file> argument missing" 
+
+  let ⟨_, _, ts⟩ ← FileFormat.TileSet.ofFile tileset
+  let sol ← FileFormat.BoardSol.ofFile ts sol
+
+  let tb ← IO.ofExcept sol.toTileBoard
+  IO.println tb
+
+  return 0
+
+def visualizeSolCmd := `[Cli|
+  "visualize" VIA runVisualizeSolCmd; ["0.0.1"]
+  "Print ASCII version of a solution."
+
+  FLAGS:
+    tileset : String; "File containing the tileset"
+    sol : String; "File containing the solution"
+]
+
 def mainCmd := `[Cli|
   eternity2 NOOP; ["0.0.1"]
   "Tools working towards a solution to Eternity II"
@@ -252,7 +275,8 @@ def mainCmd := `[Cli|
     solveBoardSuiteCmd;
     solveTileSetCmd;
     testSolveTimesCmd;
-    findSignCorrsCmd
+    findSignCorrsCmd;
+    visualizeSolCmd
 ]
 
 def main (args : List String) : IO UInt32 := do
