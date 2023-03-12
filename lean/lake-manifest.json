@@ -4,7 +4,7 @@
  [{"git":
    {"url": "https://github.com/JamesGallicchio/LeanSAT",
     "subDir?": null,
-    "rev": "d1ae6897c147f62c7926c9f9bac585b9f76a2b75",
+    "rev": "ef752ba96dfdac2525aa2854b92439fb65f089e5",
     "name": "lean-sat",
     "inputRev?": "main"}},
   {"git":
@@ -16,6 +16,6 @@
   {"git":
    {"url": "http://github.com/leanprover/std4.git",
     "subDir?": null,
-    "rev": "041bd3c1ca5b08691d9770d77235ff0615875007",
+    "rev": "7d37ab32aac2004fa32e1df5b38d878c2301cd71",
     "name": "Std",
     "inputRev?": "main"}}]}
