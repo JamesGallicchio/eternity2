@@ -76,14 +76,14 @@ def plotPuzzleSolCounts (suite output) := show IO _ from do
   plotSolCounts "puzzle" suite output fun ts => do
     let tsv ← Encoding.mkVars ts
     Encoding.compactEncoding tsv false
-    Encoding.fixCorner tsv
+    --Encoding.fixCorner tsv
     return tsv.diamondVarList
 
 def plotEdgePuzzleSolCounts (suite output) := show IO _ from do
   plotSolCounts "edgepuzzle" suite output fun ts => do
     let tsv ← Encoding.mkVars ts
     Encoding.compactEncoding tsv (onlyEdge := true)
-    Encoding.fixCorner tsv
+    --Encoding.fixCorner tsv
     return tsv.borderDiamondVarList
 
 def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
@@ -107,7 +107,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
         let (blocking_vars, state) := EncCNF.new! do
           let tsv ← Encoding.mkVars ts
           Encoding.compactEncoding tsv
-          Encoding.fixCorner tsv
+          --Encoding.fixCorner tsv
           return tsv.diamondVarList
 
         return ← Solver.ApproxModelCount.approxModelCount
@@ -118,7 +118,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
         let (blocking_vars, state) := EncCNF.new! do
           let tsv ← Encoding.mkVars ts
           Encoding.compactEncoding tsv
-          Encoding.fixCorner tsv
+          --Encoding.fixCorner tsv
           Encoding.colorCardConstraints tsv
           Encoding.associatePolarities tsv
           return tsv.diamondVarList

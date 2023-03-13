@@ -198,7 +198,6 @@ def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
   testSolveTimes suite {
     useRedundant,
     usePolarity,
-    fixCorner := true
   }
   return 0
 
