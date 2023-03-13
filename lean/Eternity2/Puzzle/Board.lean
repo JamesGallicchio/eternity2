@@ -43,34 +43,41 @@ private def middleFins (psize : Nat) : List (Fin psize.succ) :=
   forIn' (m := Id) [1:psize] [] (fun x h y =>
     .yield (⟨x, by exact Nat.le_step h.2⟩ :: y))
 
-def up : (i j : Fin size) → DiamondIndex size
+def up' : (i j : Fin size) → DiamondIndex size
 | i, j => .vert ⟨i, Nat.le_step i.isLt⟩ j
 
-def left : (i j : Fin size) → DiamondIndex size
+def up (si : SquareIndex size) := up' si.row si.col
+
+def left' : (i j : Fin size) → DiamondIndex size
 | i, j => .horz i ⟨j, Nat.le_step j.isLt⟩
 
-def down : (i j : Fin size) → DiamondIndex size
+def left (si : SquareIndex size) := left' si.row si.col
+
+def down' : (i j : Fin size) → DiamondIndex size
 | i, j => .vert ⟨i+1, Nat.succ_le_succ i.isLt⟩ j
 
-def right : (i j : Fin size) → DiamondIndex size
+def down (si : SquareIndex size) := down' si.row si.col
+
+def right' : (i j : Fin size) → DiamondIndex size
 | i, j => .horz i ⟨j+1, Nat.succ_le_succ j.isLt⟩
 
+def right (si : SquareIndex size) := right' si.row si.col
 
 def corners (size : Nat) : List (SquareIndex size × (Fin 2 → DiamondIndex size)) :=
   match size with
   | 0 => [] | _ + 1 =>
     [ ( ⟨0, 0⟩, fun
-          | 0 => right  0 0
-          | 1 => down   0 0)
+          | 0 => right' 0 0
+          | 1 => down'  0 0)
     , ( ⟨0, maxIdx⟩, fun
-          | 0 => down   0 maxIdx
-          | 1 => left   0 maxIdx)
+          | 0 => down'  0 maxIdx
+          | 1 => left'  0 maxIdx)
     , ( ⟨maxIdx, maxIdx⟩, fun
-          | 0 => left   maxIdx maxIdx
-          | 1 => up     maxIdx maxIdx)
+          | 0 => left'  maxIdx maxIdx
+          | 1 => up'    maxIdx maxIdx)
     , ( ⟨maxIdx, 0⟩, fun
-          | 0 => up     maxIdx 0
-          | 1 => right  maxIdx 0)
+          | 0 => up'    maxIdx 0
+          | 1 => right' maxIdx 0)
     ]
 
 def sides (size : Nat) : List (SquareIndex size × (Fin 3 → DiamondIndex size)) :=
@@ -78,21 +85,21 @@ def sides (size : Nat) : List (SquareIndex size × (Fin 3 → DiamondIndex size)
   | 0 => [] | psize + 1 =>
   middleFins psize |>.bind fun i =>
     [ ( ⟨0, i⟩, fun
-        | 0 => right  0 i
-        | 1 => down   0 i
-        | 2 => left   0 i )
+        | 0 => right' 0 i
+        | 1 => down'  0 i
+        | 2 => left'  0 i )
     , ( ⟨i, 0⟩, fun
-        | 0 => up     i 0
-        | 1 => right  i 0
-        | 2 => down   i 0 )
+        | 0 => up'    i 0
+        | 1 => right' i 0
+        | 2 => down'  i 0 )
     , ( ⟨maxIdx, i⟩, fun
-        | 0 => left   maxIdx i
-        | 1 => up     maxIdx i
-        | 2 => right  maxIdx i )
+        | 0 => left'  maxIdx i
+        | 1 => up'    maxIdx i
+        | 2 => right' maxIdx i )
     , ( ⟨i, maxIdx⟩, fun
-        | 0 => down   i maxIdx
-        | 1 => left   i maxIdx
-        | 2 => up     i maxIdx )
+        | 0 => down'  i maxIdx
+        | 1 => left'  i maxIdx
+        | 2 => up'    i maxIdx )
     ]
 
 def center (size : Nat) : List (SquareIndex size × (Fin 4 → DiamondIndex size)) :=
@@ -101,10 +108,10 @@ def center (size : Nat) : List (SquareIndex size × (Fin 4 → DiamondIndex size
   middleFins psize |>.bind fun x =>
     middleFins psize |>.map fun y =>
       (⟨x,y⟩, fun
-        | 0 => up     x y
-        | 1 => right  x y
-        | 2 => down   x y
-        | 3 => left   x y)
+        | 0 => up'    x y
+        | 1 => right' x y
+        | 2 => down'  x y
+        | 3 => left'  x y)
 
 def all (size : Nat) : List (SquareIndex size) :=
   List.fins size |>.bind fun i =>
@@ -551,10 +558,10 @@ def set (di : DiamondIndex size) (db : DiamondBoard size c) (color : c) : Diamon
 
 def diamond_to_tile (dboard : DiamondBoard size c) (row col : Fin size) : Tile c :=
   {
-    up    := dboard.get <| SquareIndex.up row col
-    right := dboard.get <| SquareIndex.right row col
-    down  := dboard.get <| SquareIndex.down row col
-    left  := dboard.get <| SquareIndex.left row col
+    up    := dboard.get <| SquareIndex.up' row col
+    right := dboard.get <| SquareIndex.right' row col
+    down  := dboard.get <| SquareIndex.down' row col
+    left  := dboard.get <| SquareIndex.left' row col
     sign  := none
   }
 

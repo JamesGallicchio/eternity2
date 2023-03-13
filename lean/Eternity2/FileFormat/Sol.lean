@@ -2,7 +2,7 @@ import Eternity2.Puzzle.BoardSol
 
 namespace Eternity2.FileFormat.BoardSol
 
-def toFileFormat [BEq c] {ts : TileSet size c} (sol : BoardSol ts) : String :=
+def toFileFormat [BEq t] {ts : TileSet size t} (sol : BoardSol ts) : String :=
   Id.run do
     let mut res := ""
     for i in List.fins _ do
@@ -10,14 +10,11 @@ def toFileFormat [BEq c] {ts : TileSet size c} (sol : BoardSol ts) : String :=
       res := res ++ s!"{i} {col} {row} {rot}\n"
     return res
 
-def toFile (filename : System.FilePath)
-    [BEq c] {ts : TileSet size c} (sol : BoardSol ts)
-                : IO Unit :=
+def toFile (filename : System.FilePath) [BEq t] {ts : TileSet size t}
+            (sol : BoardSol ts) : IO Unit :=
   IO.FS.withFile filename .write (·.putStr (toFileFormat sol))
 
-def ofFileFormat (contents : String)
-                 (ts : TileSet size (Tile <| Color.WithBorder s))
-               : Except String (BoardSol ts) := do
+def ofFileFormat [BEq t] (contents : String) (ts : TileSet size t) : Except String (BoardSol ts) := do
   let data ← do
     let lines :=
       contents.splitOn "\n"
@@ -55,7 +52,7 @@ where parseLine : String → Except String (Fin _ × Fin _ × Fin _ × Fin 4) :=
     )
     | _ => throw s!"Incorrectly formatted sol line: {line}"
 
-def ofFile (ts : TileSet size (Tile <| Color.WithBorder s)) (filename : System.FilePath) :=
+def ofFile [BEq t] (ts : TileSet size t) (filename : System.FilePath) :=
   show IO _ from do
   let contents ← IO.FS.withFile filename .read (fun handle =>
     handle.readToEnd
