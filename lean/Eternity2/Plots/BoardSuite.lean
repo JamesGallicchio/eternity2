@@ -29,9 +29,9 @@ def BoardDir.ofPuzFile (puzFile : FilePath) : IO BoardDir := do
       none
 
   -- get all the .sol files in the same directory
-  let solFiles ←
-    puzFile.withFileName "."
-    |>.walkDir (fun p => do return p.extension = some "sol")
+  let solFiles :=
+    (← puzFile.withFileName "." |>.walkDir)
+    |>.filter (fun p => p.extension = some "sol")
 
   -- read each sol file as a solution to ts
   let sols ← solFiles.mapM (fun f => do
