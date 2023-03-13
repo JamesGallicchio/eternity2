@@ -13,7 +13,7 @@ IN_PROGRESS=$( echo "$STARTED-$TIMED_OUT-$FOUND_ALL" | bc )
 NEW_SOLS=$(  grep "\.sol"    $LOG_FILE | wc -l)
 
 AVE_CPU=$( sstat -j $1.batch -aPo AveCPU | tail -n 1 )
-MAX_RSS=$( sstat -j $1.batch -aPo MaxRSS | tail -n 1 )
+MAX_RSS=$( sstat -j $1.batch -aPo MaxRSS | tail -n 1 | numfmt --from=iec --to=iec )
 ELAPSED=$( sacct -j $1.batch -o elapsed -P | tail -n 1 )
 
 echo "Started $STARTED/$TO_SOLVE ($NOT_STARTED remaining)"
