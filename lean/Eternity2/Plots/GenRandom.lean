@@ -111,17 +111,22 @@ def boardSuite (seed : Nat) (output : System.FilePath) : IO BoardSuite := do
           GenRandom.board size colors
           |> RandomM.run gen
           |>.1 |> IO.ofExcept
-        -- write the resulting puzzle + the default solution to files
+        -- scramble the puzzle
         let t := b.tileBoard
         let ⟨ts,b⟩ ← (BoardSol.ofTileBoard t).2.scramble
+        -- write the resulting puzzle + the default solution to files
         let dir := output / s!"board_{iter}"
         IO.FS.createDir dir
         FileFormat.TileSet.toFile  (dir / "puzzle.puz") ts
         FileFormat.BoardSol.toFile (dir / "default_sol.sol") b
+        -- write a hint for the corner (to break symmetry)
+        let clue ← IO.ofExcept <| BoardClues.fixCornerOfSol b
+        FileFormat.BoardClues.toFile (dir / "puzzle.clue") clue
         -- construct BoardDir
         let bd : BoardDir := {
           puzFile := dir / "puzzle.puz",
           size, colors, ts,
+          clues := some clue,
           sols := #[(dir / "default_sol.sol", b)]
           allSols := false
           }

@@ -1,3 +1,4 @@
+import Eternity2.Puzzle.BoardClues
 import Eternity2.Puzzle.BoardSol
 import Eternity2.Puzzle.Encoding
 
@@ -8,8 +9,7 @@ open Encoding LeanSAT Encode EncCNF
 structure EncodingSettings where
   useRedundant  : Bool := true
   usePolarity   : Bool := false
-  fixCorner     : Bool := true
-  fixCorners    : Option (Fin 6) := none
+  fixCorners    : Option (Fin 24) := none
 
 def encodePuzzle (ts : TileSet size (Tile <| Color.WithBorder s)) (es : EncodingSettings)
   : EncCNF (TileSetVariables size s)
@@ -26,7 +26,7 @@ def encodePuzzle (ts : TileSet size (Tile <| Color.WithBorder s)) (es : Encoding
     associatePolarities tsv
 
   match es.fixCorners with
-  | none => if es.fixCorner then fixCorner tsv
+  | none => pure ()
   | some i => fixCorners tsv i
 
   return tsv
@@ -77,6 +77,15 @@ def decodeSol
   have : sol.size = size * size := sorry
   return ⟨(sol[this.symm ▸ ·])⟩
 
+def encodeClues (tsv : TileSetVariables size s) (clues : BoardClues tsv.ts) : EncCNF Unit := do
+  for (i,si,r) in clues.clues do
+    addClause (tsv.piece_vars i si)
+    have : i < tsv.ts.tiles.length := by cases i; rw [←tsv.ts.h_ts] at *; assumption
+    let tile := tsv.ts.tiles[i].rotln r
+    addClause (tsv.diamond_vars si.up tile.up)
+    addClause (tsv.diamond_vars si.right tile.right)
+    addClause (tsv.diamond_vars si.down tile.down)
+    addClause (tsv.diamond_vars si.left tile.left)
 
 def solve [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
   show IO _ from do

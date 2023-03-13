@@ -1,6 +1,8 @@
 import Eternity2.Puzzle.BoardSol
+import Eternity2.Puzzle.BoardClues
 import Eternity2.FileFormat.Puz
 import Eternity2.FileFormat.Sol
+import Eternity2.FileFormat.Clue
 
 open System
 
@@ -11,11 +13,20 @@ structure BoardDir where
   size    : Nat
   colors  : Color.WithBorder.Settings
   ts      : TileSet size (Tile (Color.WithBorder colors))
+  clues   : Option (BoardClues ts)
   sols    : Array (FilePath × BoardSol ts)
   allSols : Bool
 
 def BoardDir.ofPuzFile (puzFile : FilePath) : IO BoardDir := do
   let ⟨size, colors, ts⟩ ← FileFormat.TileSet.ofFile puzFile
+
+  -- get clue file if present
+  let clueFile := puzFile.withFileName "puzzle.clue"
+  let clues :=
+    if (← clueFile.pathExists) then
+      some (← FileFormat.BoardClues.ofFile ts clueFile)
+    else
+      none
 
   -- get all the .sol files in the same directory
   let solFiles ←
@@ -28,11 +39,15 @@ def BoardDir.ofPuzFile (puzFile : FilePath) : IO BoardDir := do
 
   -- check whether `done` file is present in directory (which indicates all solutions were found)
   let allSols ← (puzFile.withFileName "done").pathExists
-  return { puzFile := ← IO.FS.realPath puzFile, size, colors, ts, sols, allSols }
+  return { puzFile := ← IO.FS.realPath puzFile, clues, size, colors, ts, sols, allSols }
 
 def BoardDir.updateFilesystem (bd : BoardDir) : IO Unit := do
   if ! (←bd.puzFile.pathExists) then
     FileFormat.TileSet.toFile bd.puzFile bd.ts
+  
+  for clues in bd.clues do
+    if !(← (bd.puzFile.withFileName "puzzle.clue" |>.pathExists)) then
+      FileFormat.BoardClues.toFile (bd.puzFile.withFileName "puzzle.clue") clues
 
   if bd.allSols && !(← (bd.puzFile.withFileName "done" |>.pathExists)) then
     IO.FS.writeFile (bd.puzFile.withFileName "done") ""

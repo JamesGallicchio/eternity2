@@ -19,6 +19,9 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
     -- encode the basic puzzle constraints
     let tsv ← SolvePuzzle.encodePuzzle bdir.ts es
     have : tsv.ts = bdir.ts := sorry
+    -- if clues exist, encode them
+    for clues in bdir.clues do
+      SolvePuzzle.encodeClues tsv (this ▸ clues)
     -- block each existing solution
     for (_, sol) in bdir.sols do
       let a ← SolvePuzzle.encodeSol tsv (this ▸ sol)
@@ -32,7 +35,7 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
   let bdRef ← IO.mkRef ⟨bdir, sorry⟩
   if parallelize then
     let handle ← Log.getHandle
-    let (_ : List Unit) ← (List.fins 6).parMap fun i => do
+    let (_ : List Unit) ← (List.fins 24).parMap fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do
         Encoding.fixCorners tsv i
@@ -40,8 +43,6 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
       aux tsv enc s!"{name}, corner {i}" bdRef
       Log.info s!"Board {name}, corner {i}: Solver finished"
   else
-    let ((), enc) := EncCNF.run! enc do
-      Encoding.fixCorner tsv
     aux tsv enc name bdRef
   Log.info s!"Board {name}: All solutions found"
   let _ ← (← bdRef.get).1.markAllSols

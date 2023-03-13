@@ -339,28 +339,26 @@ def forbiddenColors (tsv : TileSetVariables size s) : EncCNF Unit := do
         for i in List.fins 4 do
           addClause (¬tsv.piece_vars p q ∨ ¬tsv.diamond_vars (ds i) c)
 
-/- Break rotational symmetry by assigning a corner to (0,0) -/
-def fixCorner (tsv : TileSetVariables size s) : EncCNF Unit := do
-  if h:size > 0 then
-    for (i, _) in tsv.ts.tiles.enum.find? (·.2.isCorner) do
-      if hi:_ then
-        addClause (tsv.piece_vars ⟨i, hi⟩ ⟨⟨0,h⟩,⟨0,h⟩⟩)
-      else panic! "woah"
-
 /- Constrain board to be the i'th corner configuration -/
-def fixCorners (tsv : TileSetVariables size s) (num : Fin 6) : EncCNF Unit := do
+def fixCorners (tsv : TileSetVariables size s) (num : Fin 24) : EncCNF Unit := do
   if h:size > 0 then
     let corners := tsv.ts.tiles.enum'.filter (fun (_, t) => t.isCorner)
     match corners with
     | [a,b,c,d] =>
-      let (b,c,d) :=
-        match num with
-        | 0 => (b,c,d)
-        | 1 => (b,d,c)
-        | 2 => (c,b,d)
-        | 3 => (c,d,b)
-        | 4 => (d,b,c)
-        | 5 => (d,c,b)
+      let (a,b,c,d) :=
+        let (num, x₁) := (num / 4, num % 4)
+        let (num, x₂) := (num / 3, num % 3)
+        let       x₃  :=           num % 2
+        let take := fun {α} [Inhabited α] (L : List α) i =>
+          let (A,B) := L.splitAt i
+          (B.head!, A ++ B.tail!)
+        have : Inhabited _ := ⟨a⟩
+        let L := [a,b,c,d]
+        let (a, L) := take L x₁
+        let (b, L) := take L x₂
+        let (c, L) := take L x₃
+        let d := L.head!
+        (a,b,c,d)
       addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ a.1) ⟨⟨0,h⟩,        ⟨0,h⟩⟩
       addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ b.1) ⟨⟨0,h⟩,        Fin.last _ h⟩
       addClause <| tsv.piece_vars (tsv.ts.h_ts ▸ c.1) ⟨Fin.last _ h, ⟨0,h⟩⟩
