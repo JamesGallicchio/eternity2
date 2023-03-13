@@ -4,11 +4,11 @@ import LeanSAT.Solver
 
 namespace Eternity2
 
-def solveBoardSuite [LeanSAT.Solver IO] (suite : BoardSuite) : Log IO Unit := do
+def solveBoardSuite [LeanSAT.Solver IO] (suite : BoardSuite) : Log IO Unit := do  
   -- look only at boards that are not fully solved yet
   let unsolved := suite.boards.filter (!·.allSols)
 
-  Log.info s!"{suite.boards.size - unsolved.size} already solved, {unsolved.size} to be solved"
+  Log.info s!"{suite.boards.size - unsolved.size} boards already solved, {unsolved.size} to be solved"
 
   -- sort by board size (increasing), then by number of center colors (decreasing)
   let bs := unsolved.insertionSort (fun x y =>
@@ -17,7 +17,7 @@ def solveBoardSuite [LeanSAT.Solver IO] (suite : BoardSuite) : Log IO Unit := do
 
   let handle ← Log.getHandle
   
-  -- solve each board in parallel, using `n` threads
+  -- solve each board in parallel
   let (_ : List Unit) ← bs.toList.parMap (fun bdir => do
     Log.run handle <| Log.info s!"Board {bdir.puzFile}: starting"
     try

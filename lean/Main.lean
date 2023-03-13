@@ -171,7 +171,8 @@ def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
     Log.info s!"Loading board suite from directory {suite}"
     let bs ← BoardSuite.ofDirectory suite
     Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
-    
+    Log.info s!"{bs.boards.map (·.sols.size) |>.foldl (· + ·) 0} solutions present in board suite"
+
     solveBoardSuite bs
   )
 

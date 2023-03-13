@@ -15,6 +15,10 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
     Log.info s!"Board {bdir.puzFile}: already solved"
     return
   
+  Log.info s!"Board {bdir.puzFile}: clue file {
+      if bdir.clues.isSome then "present" else "not present"
+    }; {bdir.sols.size} solutions present"
+  
   let (tsv, enc) := EncCNF.new! do
     -- encode the basic puzzle constraints
     let tsv ← SolvePuzzle.encodePuzzle bdir.ts es
