@@ -426,10 +426,10 @@ def signCardConstraints (tsv : TileSetVariables size s)
 def associatePolarities (ts : TileSetVariables size s) : EncCNF Unit := do
   -- For each piece & location, positive location -> positive piece, negative location -> negative piece
   for p in List.fins _ do
-    for ⟨i,j⟩ in SquareIndex.all size do
-      if (i.val + j) % 2 = 0 then
+    for q in SquareIndex.all size do
+      if q.isPos then
         -- positive location
-        addClause (¬ts.piece_vars p ⟨i,j⟩ ∨ ts.sign_vars p)
+        addClause (¬ts.piece_vars p q ∨ ts.sign_vars p)
       else
         -- negative location
-        addClause (¬ts.piece_vars p ⟨i,j⟩ ∨ ¬ts.sign_vars p)
+        addClause (¬ts.piece_vars p q ∨ ¬ts.sign_vars p)

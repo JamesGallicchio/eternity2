@@ -131,6 +131,9 @@ def layerK (size : Nat) (k : Nat) : List (SquareIndex size) :=
     || (j = k || j = size-k-1) && k ≤ i && i < (size-k)
   )
 
+def isPos : SquareIndex size → Bool
+| ⟨i,j⟩ => ((i.val + j.val) % 2) = 0
+
 instance : ToString (SquareIndex size) where
   toString | ⟨i, j⟩ => s!"r{i}c{j}"
 

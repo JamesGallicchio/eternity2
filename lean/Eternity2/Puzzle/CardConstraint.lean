@@ -69,6 +69,7 @@ end CardConstraint
 
 structure EncCard.State where
   clauses : List CardConstraint
+deriving Inhabited
 
 @[reducible]
 def EncCard := StateM EncCard.State
@@ -102,15 +103,28 @@ def gaussElim : EncCard Unit := do
   StateT.set <| aux (←get).clauses []
 where
   aux (cs : List CardConstraint) (acc : List CardConstraint) :=
-    match cs with
-    | [] => ⟨acc⟩
-    | c::cs =>
-      match c.lits.min with
-      | none => if c.weight = 0 then aux cs acc else .unsat
-      | some (pvar, _) =>
-      let cs' := cs.map (pivot pvar c)
-      let acc' := acc.map (pivot pvar c)
-      aux cs' (c::acc')
+    match
+      cs.removeOne'.map (β := Σ' (cs' : List CardConstraint) (_ : cs'.length < cs.length), List CardConstraint)
+        (fun (c,⟨cs',h⟩) =>
+        match c.lits.min with
+        | none =>
+          if c.weight = 0 then
+            ⟨cs', h, acc⟩
+          else
+            ⟨[], Nat.lt_of_le_of_lt (Nat.zero_le _) h, State.unsat.clauses⟩
+        | some (pvar, _) =>
+        let cs' := cs'.map (pivot pvar c)
+        let acc' := acc.map (pivot pvar c)
+        ⟨cs', by simp; exact h, c::acc'⟩
+      )
+      |>.minBy (fun ⟨cs',_,acc'⟩ =>
+        (cs'.map (fun c => CardConstraint.lits c |>.size) |>.foldl (· + ·) 0)
+        + (acc'.map (fun c => CardConstraint.lits c |>.size) |>.foldl (· + ·) 0))
+    with
+    | none => ⟨acc.reverse⟩
+    | some ⟨cs',h,acc'⟩ =>
+    have : cs'.length < cs.length := h
+    aux cs' acc'
   pivot (pvar : Var) (piv other : CardConstraint) :=
     match piv.lits.find? pvar, other.lits.find? pvar with
     | none, _ => panic! "pivot does not have pvar"

@@ -52,7 +52,7 @@ instance [Monad m] [ForIn m ρ α] : ForIn (Log m) ρ α where
 end Log
 
 
-def LeanSAT.Encode.EncCNF.State.cleanup : State → State
+def LeanSAT.Encode.EncCNF.State.cleanup : State → State × (Var → Var)
 | {nextVar, clauses, names, varCtx} =>
   let usedVars :=
     clauses.foldl
@@ -80,10 +80,11 @@ def LeanSAT.Encode.EncCNF.State.cleanup : State → State
     | .neg v => .neg <| varRemap.find! v
     )⟩)
 
-  { nextVar := nextVarRemap
-    names := namesRemap
-    clauses := clausesRemap
-    varCtx := varCtx}
+  ( { nextVar := nextVarRemap
+      names := namesRemap
+      clauses := clausesRemap
+      varCtx := varCtx}
+  , varRemap.find! )
 
 def List.pmap {p : α → Prop} (f : ∀ a, p a → β) : ∀ l : List α, (∀ a ∈ l, p a) → List β
   | [], _ => []
@@ -149,3 +150,23 @@ def List.parMap (jobs : List α) (f : α → IO β) : IO (List β) := do
   let tasks ← jobs.mapM (IO.asTask <| f ·)
   let res ← IO.mapTasks (·.mapM IO.ofExcept) tasks
   return ← IO.ofExcept res.get
+
+def List.removeOne : List α → List (α × List α)
+| [] => []
+| x::xs => (x,xs) :: (xs.removeOne.map (fun (x',xs') => (x', x::xs')))
+
+def List.removeOne' : (L : List α) → List (α × { L' : List α // L'.length < L.length })
+| [] => []
+| x::xs => (x,⟨xs, by simp⟩) :: (xs.removeOne'.map (fun (x',⟨xs',h⟩) => (x', ⟨x::xs', Nat.succ_lt_succ h⟩)))
+
+def List.minBy [LT β] [DecidableRel (@LT.lt β _)] (f : α → β) (L : List α) : Option α :=
+  L.foldl (fun o a =>
+    let b := f a
+    match o with
+    | none => some (a, f a)
+    | some (a',b') =>
+      if b < b' then
+        some (a,b)
+      else
+        some (a',b')) none
+  |>.map (·.1)

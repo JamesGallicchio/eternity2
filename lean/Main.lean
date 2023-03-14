@@ -186,6 +186,11 @@ def solveBoardSuiteCmd := `[Cli|
     suite : String; "Directory with the board suite"
     timeout : Nat; "Timeout (in sec) to give up on solving a board"
     logfile : String; "File to log detailed results in"
+    parallelize : Bool; "Whether to solve each board with 24 parallel instances, split on corner arrangement"
+  
+  EXTENSIONS:
+    defaultValues! #[("parallelize", "false")]
+
 ]
 
 def runTestSolveTimesCmd (p : Parsed) : IO UInt32 := do
