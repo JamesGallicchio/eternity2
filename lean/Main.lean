@@ -158,6 +158,7 @@ def genBoardSuiteCmd := `[Cli|
 def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
   let suite : FilePath := p.flag! "suite" |>.as! String
   let timeout : Option Nat := p.flag? "timeout" |>.map (·.as! Nat)
+  let parallelize : Bool := p.flag! "parallelize" |>.as! Bool
 
   let logfile : FilePath :=
     p.flag? "logfile" |>.map (·.as! String)
@@ -173,7 +174,7 @@ def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
     Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
     Log.info s!"{bs.boards.map (·.sols.size) |>.foldl (· + ·) 0} solutions present in board suite"
 
-    solveBoardSuite bs
+    solveBoardSuite bs parallelize
   )
 
   return 0
