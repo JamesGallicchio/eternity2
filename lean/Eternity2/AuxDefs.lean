@@ -175,7 +175,7 @@ def List.maxBy [LT β] [DecidableRel (@LT.lt β _)] (f : α → β) (L : List α
   L.foldl (fun o a =>
     let b := f a
     match o with
-    | none => some (a, f a)
+    | none => some (a, b)
     | some (a',b') =>
       if b < b' then
         some (a',b')
@@ -196,7 +196,7 @@ def List.maxByMap [LT β] [DecidableRel (@LT.lt β _)] (f : α → α' × β) (L
   L.foldl (fun o a =>
     let b := f a
     match o with
-    | none => some (a, f a)
+    | none => some (a, b)
     | some (a',b') =>
       if b.2 < b'.2 then
         some (a',b')
