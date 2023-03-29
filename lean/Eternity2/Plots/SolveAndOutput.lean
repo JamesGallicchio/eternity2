@@ -8,7 +8,7 @@ open LeanSAT LeanSAT.Encode Eternity2.Encoding
 /- Find solutions not already found in `bdir`, outputting them to `bdir` -/
 def solveAndOutput [Solver IO] (bdir : BoardDir)
       (es : SolvePuzzle.EncodingSettings)
-      (parallelize : Bool := false)
+      (parallelize : Bool)
       : Log IO Unit
   := do
   if bdir.allSols then
@@ -22,21 +22,22 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
   let (tsv, enc) := EncCNF.new! do
     -- encode the basic puzzle constraints
     let tsv ← SolvePuzzle.encodePuzzle bdir.ts es
-    have : tsv.ts = bdir.ts := sorry
     -- if clues exist, encode them
     for clues in bdir.clues do
-      SolvePuzzle.encodeClues tsv (this ▸ clues)
+      SolvePuzzle.encodeClues tsv (clues)
     -- block each existing solution
     for (_, sol) in bdir.sols do
-      let a ← SolvePuzzle.encodeSol tsv (this ▸ sol)
+      let a ← SolvePuzzle.encodeSol tsv (sol)
       EncCNF.blockAssn a
     
     return tsv
-
-  have : tsv.ts = bdir.ts := sorry
-
+  
   let name := bdir.puzFile.toString
-  let bdRef ← IO.mkRef ⟨bdir, sorry⟩
+  let bdRef : IO.Ref { bd : BoardDir //
+    ∃ (hsize : bd.size = bdir.size)
+    (hcolors : bd.colors = bdir.colors),
+    bd.ts = hsize ▸ hcolors ▸ bdir.ts }
+    ← IO.mkRef ⟨bdir, rfl, rfl, rfl⟩
   if parallelize then
     let handle ← Log.getHandle
     let (_ : List Unit) ← (List.fins 24).parMap fun i => do
@@ -51,15 +52,22 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
   Log.info s!"Board {name}: All solutions found"
   let _ ← (← bdRef.get).1.markAllSols
 where
-  aux {size s} (tsv : TileSetVariables size s) enc name
-    (bdRef : IO.Ref { bd : BoardDir // (BoardSol bd.ts) = (BoardSol tsv.ts) })
+  aux (tsv : TileSetVariables bdir.ts) enc name
+    (bdRef : IO.Ref _)
     : Log IO Unit := do
   for assn in Solver.solutions enc.toFormula tsv.diamondVarList do
     match SolvePuzzle.decodeSol tsv assn with
     | .error s =>
       Log.error s!"Failed to decode board {name} solution: {s}"
     | .ok sol =>
-      let ⟨bdir,h⟩ ← bdRef.get
-      let (path, bdir') ← bdir.addSolNextName (h ▸ sol)
+      let ⟨bd,h⟩ ← bdRef.get
+      let sol : BoardSol bd.ts := cast (by
+          rw [h.2.2]
+          cases bd
+          cases h.2.1
+          cases h.1
+          rfl
+        ) sol
+      let (path, bdir') ← bd.addSolNextName sol
       bdRef.set ⟨bdir', sorry⟩
       Log.info s!"Board {name}: Wrote solution to {path.fileName.get!}"

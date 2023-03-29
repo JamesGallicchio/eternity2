@@ -12,7 +12,7 @@ structure EncodingSettings where
   fixCorners    : Option (Fin 24) := none
 
 def encodePuzzle (ts : TileSet size (Tile <| Color.WithBorder s)) (es : EncodingSettings)
-  : EncCNF (TileSetVariables size s)
+  : EncCNF (TileSetVariables ts)
   := do
   let tsv ← mkVars ts
   compactEncoding tsv
@@ -33,14 +33,14 @@ def encodePuzzle (ts : TileSet size (Tile <| Color.WithBorder s)) (es : Encoding
 
 
 
-def encodeDiamondBoard (tsv : TileSetVariables size s) (board : DiamondBoard size (Color.WithBorder s))
+def encodeDiamondBoard {ts : TileSet size (Tile (Color.WithBorder s))} (tsv : TileSetVariables ts) (board : DiamondBoard size (Color.WithBorder s))
   : Assn := Id.run do
   let mut assn : Assn := Std.HashMap.empty
   for i in List.fins _ do
     assn := assn.insert (tsv.diamond_vars (.ofFin i) board.board[board.boardsize.symm ▸ i]) true
   return assn
 
-def decodeDiamondBoard (tsv : TileSetVariables size s) (m : Assn) :=
+def decodeDiamondBoard {ts : TileSet size (Tile (Color.WithBorder s))} (tsv : TileSetVariables ts) (m : Assn) :=
   let tb : DiamondBoard size (Option (Color.WithBorder s)) := {
     board :=
       Array.init _ (fun k =>
@@ -51,15 +51,14 @@ def decodeDiamondBoard (tsv : TileSetVariables size s) (m : Assn) :=
   }
   tb
 
-def encodeSol (tsv : TileSetVariables size s) (sol : BoardSol tsv.ts) : Except String LeanSAT.Assn := do
+def encodeSol {ts : TileSet size (Tile (Color.WithBorder s))} (tsv : TileSetVariables ts) (sol : BoardSol ts) : Except String LeanSAT.Assn := do
   return encodeDiamondBoard tsv <|
     (← DiamondBoard.expectFull <|
       .ofTileBoard (← sol.toTileBoard))
 
-def decodeSol
-      (tsv : TileSetVariables size s)
-      (assn : LeanSAT.Assn)
-    : Except String (BoardSol tsv.ts) := do
+def decodeSol {ts : TileSet size (Tile (Color.WithBorder s))} (tsv : TileSetVariables ts)
+              (assn : LeanSAT.Assn)
+    : Except String (BoardSol ts) := do
   let board ← decodeDiamondBoard tsv assn |>.expectFull
   let sol ←
     Array.initM _ (fun p => do
@@ -68,7 +67,7 @@ def decodeSol
           |>.find? (fun idx => assn.find? (tsv.piece_vars p idx) |>.get!)
       with
       | some idx =>
-        let tile := tsv.ts.tiles[tsv.ts.h_ts.symm ▸ p]
+        let tile := ts.tiles[ts.h_ts.symm ▸ p]
         match Tile.numRotations (board.diamond_to_tile idx.row idx.col) tile with
         | some rot => return (idx,rot)
         | none => throw "tile {p} does not fit at {i},{j} in the diamond solution:\n{board}"
@@ -77,27 +76,27 @@ def decodeSol
   have : sol.size = size * size := sorry
   return ⟨(sol[this.symm ▸ ·])⟩
 
-def encodeClues (tsv : TileSetVariables size s) (clues : BoardClues tsv.ts) : EncCNF Unit := do
+def encodeClues {ts : TileSet size (Tile (Color.WithBorder s))} (tsv : TileSetVariables ts)
+                (clues : BoardClues ts) : EncCNF Unit := do
   for (i,si,r) in clues.clues do
     addClause (tsv.piece_vars i si)
-    have : i < tsv.ts.tiles.length := by cases i; rw [←tsv.ts.h_ts] at *; assumption
-    let tile := tsv.ts.tiles[i].rotln r
+    have : i < ts.tiles.length := by cases i; rw [←ts.h_ts] at *; assumption
+    let tile := ts.tiles[i].rotln r
     addClause (tsv.diamond_vars si.up tile.up)
     addClause (tsv.diamond_vars si.right tile.right)
     addClause (tsv.diamond_vars si.down tile.down)
     addClause (tsv.diamond_vars si.left tile.left)
 
-def solve [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
-  show IO _ from do
+def solve [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables ts)
+    : IO (Option (BoardSol ts)) := do
   match ← Solver.solve enc.toFormula with
   | .sat assn =>
-    return some <| decodeSol tsv assn
+    return some <| (← IO.ofExcept <| decodeSol tsv assn)
   | _ =>
     return none
 
 /-- Find all solutions -/
-def solveAll [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables size s) :=
-  show IO _ from do
+def solveAll [Solver IO] (enc : EncCNF.State) (tsv : TileSetVariables ts) : IO (List (BoardSol ts)) := do
   let dVars := tsv.diamondVarList
   let sols ← Solver.allSolutions enc.toFormula (varsToBlock := dVars)
   return ← sols.mapM (IO.ofExcept <| decodeSol tsv ·)

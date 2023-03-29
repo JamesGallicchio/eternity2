@@ -68,7 +68,7 @@ def plotEdgeSignSolCounts (suite output) := show IO _ from do
     let tsv ← Encoding.mkVars ts
     Encoding.colorCardConstraints tsv
     return List.fins _ |>.filterMap (fun i =>
-      if !tsv.ts.tiles[tsv.ts.h_ts.symm ▸ i].isCenter
+      if !ts.tiles[ts.h_ts.symm ▸ i].isCenter
       then some (tsv.sign_vars i)
       else none)
 
@@ -161,7 +161,7 @@ def testSolveTimes [Solver IO] (boardsuite : FilePath) (es : SolvePuzzle.Encodin
         colors := colors - 1
 
 open Notation in -- nice notation for encodings
-def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables size s)
+def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables (ts : TileSet size _))
   : IO (List (Fin (size*size) × Fin (size*size) × Nat × Nat)) := do
   let mut corrs := []
   for p1 in List.fins (size*size) do
@@ -179,62 +179,3 @@ def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables size s)
       let diff_count ← Solver.ApproxModelCount.approxModelCount diffEnc.toFormula signVars
       corrs := (p1,p2,same_count.toNat,diff_count.toNat) :: corrs
   return corrs
-
-partial def findCorrs (ts : TileSet size (Tile <| Color.WithBorder s)) (sols : List (BoardSol ts)) : IO Unit := do
-  let (tsv, enc) := EncCNF.new! do
-    let tsv ← Encoding.mkVars ts
-    do
-      Encoding.colorCardConstraints tsv
-      Encoding.signCardConstraints tsv
-    if h:0 < size*size then EncCNF.addClause (tsv.sign_vars ⟨0,h⟩)
-    return tsv
-
-  let encElim := EncCNF.new! do
-    do
-      Encoding.colorCardConstraints tsv
-      Encoding.signCardConstraints tsv
-      Encoding.EncCard.gaussElim
-    if h:0 < size*size then EncCNF.addClause (tsv.sign_vars ⟨0,h⟩)
-    return tsv
-
-  let mut enc := enc
-
-  let mut assigned := []
-  while true do
-    let corrs ← getCorrs enc tsv
-    let guess := corrs.foldl (fun acc (p1,p2,s,d) =>
-      match acc with
-      | none =>
-        if !assigned.contains (p1,p2)
-        then some (p1,p2,s,d)
-        else none
-      | some (_,_,ms,md) =>
-        if !assigned.contains (p1,p2) && min s d < min ms md
-        then some (p1,p2,s,d)
-        else acc
-    ) none
-    match guess with
-    | none =>
-      break
-    | some (p1,p2, same,diff) =>
-      let pct := (Nat.toFloat <| min same diff) / (Nat.toFloat <| same + diff)
-      let actSame :=
-        sols.countp (fun sol =>
-            let (q1,_) := sol.pieceIdx p1
-            let (q2,_) := sol.pieceIdx p2
-            (q1.row + q1.col + q2.row + q2.col : Nat) % 2 == 0)
-      let actDiff := sols.length - actSame
-
-      let (p1v, p2v) := (tsv.sign_vars p1, tsv.sign_vars p2)
-      IO.println s!"({assigned.length})\t{p1} {p2}: {same}, {diff} ({pct*100}%); actual {actSame}, {actDiff}"
-      if same > diff then
-        IO.println s!"\tAssigning {p1}, {p2} to be the same.\t(matches {actSame} sols)"
-        enc := (·.2) <| EncCNF.run! enc do
-          EncCNF.addClause ⟨[.not p1v, p2v]⟩ 
-          EncCNF.addClause ⟨[p1v, .not p2v]⟩ 
-      else
-        IO.println s!"\tAssigning {p1}, {p2} to be different.\t(matches {actDiff} sols)"
-        enc := (·.2) <| EncCNF.run! enc do
-          EncCNF.addClause ⟨[p1v, p2v]⟩
-          EncCNF.addClause ⟨[.not p1v, .not p2v]⟩
-      assigned := (p1, p2) :: assigned

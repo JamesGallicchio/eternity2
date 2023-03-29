@@ -170,3 +170,81 @@ def List.minBy [LT β] [DecidableRel (@LT.lt β _)] (f : α → β) (L : List α
       else
         some (a',b')) none
   |>.map (·.1)
+
+def List.maxBy [LT β] [DecidableRel (@LT.lt β _)] (f : α → β) (L : List α) : Option α :=
+  L.foldl (fun o a =>
+    let b := f a
+    match o with
+    | none => some (a, f a)
+    | some (a',b') =>
+      if b < b' then
+        some (a',b')
+      else
+        some (a,b)) none
+  |>.map (·.1)
+
+@[simp]
+theorem List.maxBy_eq_none [LT β] [DecidableRel (@LT.lt β _)] : List.maxBy (β := β) f L = none ↔ L = [] := by
+  simp [List.maxBy]
+  cases L <;> simp
+  next hd tl =>
+  induction tl generalizing hd
+  . simp
+  . simp; split <;> simp [*]
+
+def List.maxByMap [LT β] [DecidableRel (@LT.lt β _)] (f : α → α' × β) (L : List α) : Option (α × α') :=
+  L.foldl (fun o a =>
+    let b := f a
+    match o with
+    | none => some (a, f a)
+    | some (a',b') =>
+      if b.2 < b'.2 then
+        some (a',b')
+      else
+        some (a,b)) none
+  |>.map (fun (a,a',_) => (a,a'))
+
+@[simp]
+theorem List.maxByMap_eq_none [LT β] [DecidableRel (@LT.lt β _)] : List.maxByMap (β := β) f L = none ↔ L = [] := by
+  simp [List.maxByMap]
+  cases L <;> simp
+  next hd tl =>
+  induction tl generalizing hd
+  . simp
+  . simp; split <;> simp [*]
+
+@[simp]
+theorem List.maxByMap_nil [LT β] [DecidableRel (@LT.lt β _)] : List.maxByMap (β := β) f [] = none := by
+  simp [List.maxByMap]
+
+
+@[simp]
+theorem List.isSome_maxByMap [LT β] [DecidableRel (@LT.lt β _)] : Option.isSome (List.maxByMap (β := β) f L) = !L.isEmpty := by
+  apply Eq.symm; unfold Option.isSome
+  split <;> cases L <;> simp [isEmpty] at *
+
+
+theorem List.fins.finsAux_eq_append : List.fins.finsAux n i h acc = List.fins.finsAux n i h [] ++ acc := by
+  induction i generalizing acc with
+  | zero => unfold finsAux; simp
+  | succ i ih =>
+    unfold finsAux; rw [ih]; conv => rhs; rw [ih]
+    simp
+
+
+theorem List.fins_succ (n : Nat) : List.fins n.succ = 0 :: (List.fins n |>.map (·.succ)) := by
+  unfold fins
+  suffices ∀ i (h : i ≤ n),
+    fins.finsAux (Nat.succ n) (Nat.succ i) (Nat.succ_le_succ h) []
+    = 0 :: (fins.finsAux n i h [] |>.map (·.succ))
+    from this n (Nat.le_refl _)
+  intro i h
+  induction i with
+  | zero =>
+    unfold fins.finsAux; unfold fins.finsAux; rfl
+  | succ i ih =>
+    conv => lhs; unfold fins.finsAux; rw [fins.finsAux_eq_append]
+    conv => rhs; unfold fins.finsAux; rw [fins.finsAux_eq_append]
+    rw [ih]
+    simp [Fin.succ]
+    apply Nat.le_of_lt h
