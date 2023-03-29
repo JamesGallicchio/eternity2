@@ -222,30 +222,42 @@ def testSolveTimesCmd := `[Cli|
     defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
 ]
 
-def runFindSignCorrsCmd (p : Parsed) : IO UInt32 := do
-  let tileset : String ← IO.ofExcept <|
+def runFindSolsDiscrSearchCmd (p : Parsed) : IO UInt32 := do
+  let tileset : FilePath ← IO.ofExcept <|
     p.flag? "tileset" |>.map (·.as! String) |>.expectSome fun () => "--tileset <file> argument missing"
-  let sols : String ← IO.ofExcept <|
-    p.flag? "sols" |>.map (·.as! String) |>.expectSome fun () => "--sols <dir> argument missing" 
+  let sols : Option FilePath :=
+    p.flag? "sols" |>.map (·.as! String)
+  
+  let sols ← match sols with
+    | none =>
+      let sols := (tileset.withFileName ".")
+      IO.println s!"using {sols} as solution directory"
+      pure sols
+    | some sols => pure sols
 
   let ⟨_, _, ts⟩ ← FileFormat.TileSet.ofFile tileset
   let sols ←
-    (← System.FilePath.walkDir sols (fun f => pure <| f.extension.isEqSome "sol"))
-    |>.mapM (fun f => FileFormat.BoardSol.ofFile ts f)
+    (← System.FilePath.walkDir sols)
+    |>.filter (fun f => f.extension.isEqSome "sol")
+    |>.mapM (fun f => do return (f, ← FileFormat.BoardSol.ofFile ts f))
 
-  have := LeanSAT.Solver.Impl.ApproxMCCommand
+  have := cadicalCmd (timeout := none)
+  have := LeanSAT.Solver.Impl.ApproxMCCommand (flags := ["-e", "3", "-d", "0.5"])
+  have : SignCorrSolver IO := SignCorrSolver.ofApproxMC
 
-  findCorrs ts sols.toList
+  IO.println s!"found {sols.size} solutions:"
+  for (f,_) in sols do
+    IO.println f
+  findSolInSignDiscrSearch ts (sols.map (·.2) |>.toList)
   return 0
 
-def findSignCorrsCmd := `[Cli|
-  "find-sign-corrs" VIA runFindSignCorrsCmd; ["0.0.1"]
-  "Find correlations between sign solutions on a board."
+def findSolsDiscrSearchCmd := `[Cli|
+  "find-sols-discr-search" VIA runFindSolsDiscrSearchCmd; ["0.0.1"]
+  "Find given board solutions in the board's sign correlation discrimination search tree."
 
   FLAGS:
     tileset : String; "File containing the tileset"
-    sols : String; "Directory with solution output"
-    logfile : String; "File for detailed logs"
+    sols : String; "Directory with solutions"
 ]
 
 def runVisualizeSolCmd (p : Parsed) : IO UInt32 := do
@@ -281,7 +293,7 @@ def mainCmd := `[Cli|
     solveBoardSuiteCmd;
     solveTileSetCmd;
     testSolveTimesCmd;
-    findSignCorrsCmd;
+    findSolsDiscrSearchCmd;
     visualizeSolCmd
 ]
 

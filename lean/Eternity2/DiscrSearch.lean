@@ -4,7 +4,9 @@ namespace Eternity2.DiscrSearch
 inductive Dir | left | right
 deriving Inhabited, DecidableEq, Repr
 
-instance : ToString Dir := ⟨(Repr.reprPrec · 0 |>.pretty)⟩
+instance : ToString Dir := ⟨fun
+  | .left => "left"
+  | .right => "right"⟩
 
 inductive Step (α β) | fail | branch (a : Dir → α) | found (res : β)
 

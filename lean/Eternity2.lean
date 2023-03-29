@@ -3,6 +3,7 @@ import Eternity2.FileFormat.Puz
 import Eternity2.FileFormat.Sol
 import Eternity2.Plots.BoardSuite
 import Eternity2.Plots.GenRandom
+import Eternity2.Plots.SignCorrMethods
 import Eternity2.Plots.SolveAndOutput
 import Eternity2.Plots.SolveBoardSuite
 import Eternity2.Plots
