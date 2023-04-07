@@ -49,7 +49,7 @@ where test (enc : EncCNF (List Var)) := do
 /- Finds & outputs data about where solutions occur in the
 discrimination search over sign solutions. Uses correlations produced
 by the given `SignCorrSolver` -/
-partial def findSolInSignDiscrSearch [Solver IO] [SignCorrSolver IO] (ts : TileSet size (Tile <| Color.WithBorder s)) (sols : List (BoardSol ts)) : IO Unit := do
+partial def findSolInSignDiscrSearch [Solver IO] [Solver.ModelSample IO] [SignCorrSolver IO] (ts : TileSet size (Tile <| Color.WithBorder s)) (sols : List (BoardSol ts)) : IO Unit := do
   let (tsv, enc) := EncCNF.new! do
     let tsv ← Encoding.mkVars ts
     do
@@ -58,11 +58,19 @@ partial def findSolInSignDiscrSearch [Solver IO] [SignCorrSolver IO] (ts : TileS
     return tsv
 
   IO.println "finding sign correlations"
+  let samples ← Solver.ModelSample.modelSample enc.toFormula 10
+  for assn in samples do
+    for p in List.fins _ do
+      IO.print (s!"{p}={if assn.find! <| tsv.sign_vars p then '+' else '-'} ")
+    IO.println ""
   let corrs ← SignCorrSolver.getCorrs tsv enc
 
   let corrList := corrs.inBiasOrder
 
-  IO.println corrList
+  -- print correlation list nicely
+  IO.println "correlation chain:"
+  for (i,j,corr) in corrList do
+    IO.println s!"{i}\t{j}\t{corr}"
 
   let count ← IO.mkRef 0
   let sols ← IO.mkRef sols.enum
@@ -84,7 +92,7 @@ partial def findSolInSignDiscrSearch [Solver IO] [SignCorrSolver IO] (ts : TileS
     | (i,j,cs) :: corrList =>
       --IO.println s!"branching on {i},{j}"
       return .branch (fun d =>
-        let setThemSame := if cs.numSame > cs.numDiff then d = .left else d = .right
+        let setThemSame := if cs.same > cs.diff then d = .left else d = .right
         let ((), enc) :=
           open Notation in EncCNF.run! enc do
           if setThemSame then

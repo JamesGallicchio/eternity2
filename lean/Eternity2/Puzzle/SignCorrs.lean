@@ -11,14 +11,14 @@ namespace Eternity2
 open LeanSAT Encode
 
 structure SignCorr where
-  numSame : Nat
-  numDiff : Nat
+  same : Nat
+  diff : Nat
 deriving Inhabited, Repr
 
-instance : ToString SignCorr := ⟨fun ⟨same,diff⟩ => s!"same: {same}, diff: {diff}"⟩
+instance : ToString SignCorr := ⟨fun {same,diff} => s!"same: {same}, diff: {diff}"⟩
 
 def SignCorr.mag : SignCorr → Nat
-| {numSame, numDiff} => max (numSame - numDiff) (numDiff - numSame)
+| {same, diff} => max (same - diff) (diff - same)
 
 def SignCorrs (size : Nat) := Fin (size*size) → Fin (size*size) → SignCorr
 
@@ -48,7 +48,7 @@ def SignCorrSolver.ofModelSample [Monad m] [Solver.ModelSample m]
         assn.find? (tsv.sign_vars p1) = assn.find? (tsv.sign_vars p2))
       let diff_count := sampleCount - same_count - undef_count
       undefs := undefs + undef_count
-      corrs := corrs.insert (p1,p2) ⟨same_count,diff_count⟩
+      corrs := corrs.insert (p1,p2) {same := same_count, diff := diff_count}
   if undefs > 0 then
     dbgTrace s!"undefs: {undefs}" fun () => pure ()
   return (λ p1 p2 =>
