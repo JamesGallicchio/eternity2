@@ -67,16 +67,43 @@ partial def findSolInSignDiscrSearch [Solver IO] [SignCorrSolver IO] (ts : TileS
   let count ← IO.mkRef 0
   let sols ← IO.mkRef sols.enum
 
-  let res ← DiscrSearch.discrSearch (size * size - 1) (corrList, [], enc) (fun (corrList, path, enc) => do
-    match ← Solver.solve enc.toFormula with
-    | .unsat | .error =>
-      --IO.println s!"failed at partial path {path.reverse}"
-      return .fail
-    | .sat _ =>
+  let res ← DiscrSearch.discrSearch (size * size - 1) (corrList, [], enc, none) (fun (corrList, path, enc, knownSol) => do
+    -- if we already know a solution to this path, then do not do the solver check
+    let knownSol ←
+      match knownSol with
+      | some sol =>
+        --IO.println s!"skipping check"
+        pure sol
+      | none =>
+      match ← Solver.solve enc.toFormula with
+      | .unsat | .error =>
+        --IO.println s!"failed at partial path {path.reverse}"
+        return .fail -- early fail
+      | .sat s => pure s
     match corrList with
     | (i,j,cs) :: corrList =>
       --IO.println s!"branching on {i},{j}"
-      return .branch (fun d => (corrList, d :: path, encCorr tsv enc i j cs d))
+      return .branch (fun d =>
+        let setThemSame := if cs.numSame > cs.numDiff then d = .left else d = .right
+        let ((), enc) :=
+          open Notation in EncCNF.run! enc do
+          if setThemSame then
+            EncCNF.addClause (¬ tsv.sign_vars i ∨   tsv.sign_vars j)
+            EncCNF.addClause (  tsv.sign_vars i ∨ ¬ tsv.sign_vars j)
+          else
+            EncCNF.addClause (  tsv.sign_vars i ∨   tsv.sign_vars j)
+            EncCNF.addClause (¬ tsv.sign_vars i ∨ ¬ tsv.sign_vars j)
+        let knownSol :=
+          let iSign := knownSol.find? (tsv.sign_vars i)
+          let jSign := knownSol.find? (tsv.sign_vars j)
+          if iSign.isNone || jSign.isNone then
+            dbgTrace s!"{i}: {iSign}, {j}: {jSign}" fun () => none
+          else
+          if ( iSign = jSign ) = setThemSame then
+            some knownSol
+          else
+            none
+        (corrList, d :: path, enc, knownSol))
     | [] =>
       --IO.println s!"trying path {path.reverse}"
       let mut sols' := []
@@ -98,16 +125,7 @@ partial def findSolInSignDiscrSearch [Solver IO] [SignCorrSolver IO] (ts : TileS
       else
         return .fail
   )
-  IO.println res
-  IO.println s!"Failed to find solutions: {(← sols.get).map (·.1)}"
-where encCorr tsv enc i j cs d :=
-  open Notation in
-  let setThemSame := if cs.numSame > cs.numDiff then d == .left else d == .right
-  let ((), enc) := EncCNF.run! enc do
-    if setThemSame then
-      EncCNF.addClause (¬ tsv.sign_vars i ∨   tsv.sign_vars j)
-      EncCNF.addClause (  tsv.sign_vars i ∨ ¬ tsv.sign_vars j)
-    else
-      EncCNF.addClause (  tsv.sign_vars i ∨   tsv.sign_vars j)
-      EncCNF.addClause (¬ tsv.sign_vars i ∨ ¬ tsv.sign_vars j)
-  enc
+  match res with
+  | some () => pure ()
+  | none =>
+    IO.println s!"Failed to find solutions: {(← sols.get).map (·.1)}"
