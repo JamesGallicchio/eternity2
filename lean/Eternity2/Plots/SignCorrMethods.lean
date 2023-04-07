@@ -58,7 +58,7 @@ partial def findSolInSignDiscrSearch [Solver IO] [Solver.ModelSample IO] [SignCo
     return tsv
 
   IO.println "finding sign correlations"
-  let samples ← Solver.ModelSample.modelSample enc.toFormula 10
+  let samples ← Solver.ModelSample.modelSample enc.toFormula (some tsv.signVarList) 10
   for assn in samples do
     for p in List.fins _ do
       IO.print (s!"{p}={if assn.find! <| tsv.sign_vars p then '+' else '-'} ")

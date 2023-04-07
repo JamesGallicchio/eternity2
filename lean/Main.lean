@@ -242,8 +242,8 @@ def runFindSolsDiscrSearchCmd (p : Parsed) : IO UInt32 := do
     |>.mapM (fun f => do return (f, ← FileFormat.BoardSol.ofFile ts f))
 
   have := cadicalCmd (timeout := none)
-  have := LeanSAT.Solver.Impl.CMSGenCommand
-  have : SignCorrSolver IO := SignCorrSolver.ofModelSample
+  have := LeanSAT.Solver.Impl.UniGenCommand
+  have : SignCorrSolver IO := SignCorrSolver.ofModelSample (samples := 100)
 
   IO.println s!"found {sols.size} solutions:"
   for (f,_) in sols do

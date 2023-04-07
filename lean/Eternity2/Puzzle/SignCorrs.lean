@@ -33,7 +33,8 @@ def SignCorrSolver.ofModelSample [Monad m] [Solver.ModelSample m]
   getCorrs {size _ _} tsv enc :=
   open Notation in do
 
-  let samples ← Solver.ModelSample.modelSample enc.toFormula samples
+  let signVars := tsv.signVarList
+  let samples ← Solver.ModelSample.modelSample enc.toFormula (some signVars) samples
   let sampleCount := samples.length
 
   let mut corrs := Std.HashMap.empty
