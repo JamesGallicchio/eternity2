@@ -28,30 +28,29 @@ class SignCorrSolver (m) [Monad m] where
   getCorrs {size s} {ts : TileSet size (Tile (Color.WithBorder s))}
     (tsv : Encoding.TileSetVariables ts) (enc : EncCNF.State) : m (SignCorrs size)
 
-def SignCorrSolver.ofApproxMC [Monad m] [Solver.ApproxModelCount m] : SignCorrSolver m where
+def SignCorrSolver.ofModelSample [Monad m] [Solver.ModelSample m]
+      (samples := 1000) : SignCorrSolver m where
   getCorrs {size _ _} tsv enc :=
   open Notation in do
+
+  let samples ← Solver.ModelSample.modelSample enc.toFormula samples
+  let sampleCount := samples.length
+
   let mut corrs := Std.HashMap.empty
+  let mut undefs := 0
   for p1 in List.fins (size*size) do
     for p2 in List.fins (size*size) do
       if p1 > p2 then
         continue
-      let signVars := tsv.signVarList
-      let ((),sameEnc) := EncCNF.run! enc do
-        EncCNF.addClause (¬tsv.sign_vars p1 ∨ tsv.sign_vars p2)
-        EncCNF.addClause (¬tsv.sign_vars p2 ∨ tsv.sign_vars p1)
-      let ((), diffEnc) := EncCNF.run! enc do
-        EncCNF.addClause (tsv.sign_vars p1 ∨ tsv.sign_vars p2)
-        EncCNF.addClause (¬tsv.sign_vars p1 ∨ ¬tsv.sign_vars p2)
-      let same_count :=
-        (← Solver.ApproxModelCount.approxModelCount sameEnc.toFormula signVars)
-        |>.toNat
-      let diff_count :=
-        if p1 = p2 then 0
-        else
-        (← Solver.ApproxModelCount.approxModelCount diffEnc.toFormula signVars)
-        |>.toNat
+      let undef_count := samples.countp (fun assn =>
+        assn.find? (tsv.sign_vars p1) = none || assn.find? (tsv.sign_vars p2) = none)
+      let same_count := samples.countp (fun assn =>
+        assn.find? (tsv.sign_vars p1) = assn.find? (tsv.sign_vars p2))
+      let diff_count := sampleCount - same_count - undef_count
+      undefs := undefs + undef_count
       corrs := corrs.insert (p1,p2) ⟨same_count,diff_count⟩
+  if undefs > 0 then
+    dbgTrace s!"undefs: {undefs}" fun () => pure ()
   return (λ p1 p2 =>
     if p1 ≤ p2 then corrs.find! (p1,p2) else corrs.find! (p2,p1)
   )

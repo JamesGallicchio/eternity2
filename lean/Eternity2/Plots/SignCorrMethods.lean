@@ -29,8 +29,8 @@ where test (enc : EncCNF (List Var)) := do
   
   -- count with approxmc
   let (amcTime, amcCount) ← IO.timeMs (do
-    have : Solver.ApproxModelCount IO := LeanSAT.Solver.Impl.ApproxMCCommand "approxmc"
-    return (← Solver.ApproxModelCount.approxModelCount enc.toFormula signVars).toNat
+    have : Solver.ModelCount IO := LeanSAT.Solver.Impl.ApproxMCCommand "approxmc"
+    return ← Solver.ModelCount.modelCount enc.toFormula signVars
   )
 
   -- count with d4

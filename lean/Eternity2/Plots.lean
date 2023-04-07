@@ -40,7 +40,7 @@ def plotData (name : String)
           toString board.colors.center, toString board.colors.border]
           ++ data
 
-variable [Solver.ApproxModelCount IO]
+variable [Solver.ModelCount IO]
 
 def plotSolCounts (name suite results)
                   (encoding : {size s : _}
@@ -50,7 +50,7 @@ def plotSolCounts (name suite results)
   plotData name ["sol#"] suite results fun tiles => do
     let (blocking_vars, state) := EncCNF.new! (encoding tiles)
     let count ←
-      Solver.ApproxModelCount.approxModelCount
+      Solver.ModelCount.modelCount
         state.toFormula
         blocking_vars
 
@@ -99,7 +99,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
           Encoding.colorCardConstraints tsv
           return tsv.signVarList
 
-        return ← Solver.ApproxModelCount.approxModelCount
+        return ← Solver.ModelCount.modelCount
             state.toFormula blocking_vars)
 
       -- Count solutions to just puzzle constraints (and time it)
@@ -110,7 +110,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
           --Encoding.fixCorner tsv
           return tsv.diamondVarList
 
-        return ← Solver.ApproxModelCount.approxModelCount
+        return ← Solver.ModelCount.modelCount
             state.toFormula blocking_vars)
 
       -- Count solutions to puzzle constraints with sign constraints (and time it)
@@ -123,7 +123,7 @@ def plotCorr_sign_puzzle_withTimes (suite output) := show IO _ from do
           Encoding.associatePolarities tsv
           return tsv.diamondVarList
 
-        return ← Solver.ApproxModelCount.approxModelCount
+        return ← Solver.ModelCount.modelCount
             state.toFormula blocking_vars)
 
 --      assert! (puzzlesols = puzzlesols')
@@ -160,7 +160,7 @@ def testSolveTimes [Solver IO] (boardsuite : FilePath) (es : SolvePuzzle.Encodin
       else
         colors := colors - 1
 
-open Notation in -- nice notation for encodings
+open Notation in
 def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables (ts : TileSet size _))
   : IO (List (Fin (size*size) × Fin (size*size) × Nat × Nat)) := do
   let mut corrs := []
@@ -175,7 +175,7 @@ def getCorrs (enc : EncCNF.State) (tsv : Encoding.TileSetVariables (ts : TileSet
       let ((), diffEnc) := EncCNF.run! enc do
         EncCNF.addClause (tsv.sign_vars p1 ∨ tsv.sign_vars p2)
         EncCNF.addClause (¬tsv.sign_vars p1 ∨ ¬tsv.sign_vars p2)
-      let same_count ← Solver.ApproxModelCount.approxModelCount sameEnc.toFormula signVars
-      let diff_count ← Solver.ApproxModelCount.approxModelCount diffEnc.toFormula signVars
-      corrs := (p1,p2,same_count.toNat,diff_count.toNat) :: corrs
+      let same_count ← Solver.ModelCount.modelCount sameEnc.toFormula signVars
+      let diff_count ← Solver.ModelCount.modelCount diffEnc.toFormula signVars
+      corrs := (p1,p2,same_count,diff_count) :: corrs
   return corrs

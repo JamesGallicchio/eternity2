@@ -4,7 +4,7 @@
  [{"git":
    {"url": "https://github.com/JamesGallicchio/LeanSAT",
     "subDir?": null,
-    "rev": "719470ac796a9149e0f892ccb3dff80c0dd563d3",
+    "rev": "26a3ec7bbf1cbb4eea866d9129ca5e1cf93d0169",
     "name": "lean-sat",
     "inputRev?": "main"}},
   {"git":
