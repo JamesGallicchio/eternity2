@@ -27,4 +27,4 @@ echo -e "Time Elapsed: $ELAPSED\t\tCPU Time: $AVE_CPU\t\tMemory Usage: $MAX_RSS"
 echo ""
 echo ""
 echo "Log Output:"
-tail -n 5 $LOG_FILE
+tail -n 20 $LOG_FILE

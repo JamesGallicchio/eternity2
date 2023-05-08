@@ -10,6 +10,6 @@
 #echo commands to stdout
 set -x
 
-LOG_FILE=~/log/solve_board_suite_$SLURM_JOB_ID.log
+LOG_FILE=~/log/calc_discr_search_stats_$SLURM_JOB_ID.log
 
-~/eternity2/lean/build/bin/eternity2 solve-board-suite --logfile $LOG_FILE "${@}"
+~/eternity2/lean/build/bin/eternity2 calc-discr-search-stats --logfile $LOG_FILE "${@}"
