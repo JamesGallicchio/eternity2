@@ -15,8 +15,7 @@ def IO.asTaskTimeout (time : Nat) (t : IO α) : IO (Except Unit α) :=
   let res ← IO.ofExcept res
   return res
 
- 
-def Log (m) [Monad m] [MonadLiftT IO m] (α) := IO.FS.Handle → m α
+def Log (m) [Monad m] [MonadLiftT IO m] (α) := (String → IO Unit) → m α
 
 namespace Log
 variable {m} [Monad m] [MonadLiftT IO m]
@@ -33,15 +32,20 @@ private def write (type : String) (s : String) : Log m Unit :=
   fun logfile => do
   let time ← (IO.monoMsNow : IO _)
   let ms := toString <| time % 1000
-  logfile.putStrLn s!"[{time / 1000}.{"".pushn '0' (3-ms.length) ++ ms}] {type}: {s}"
-  logfile.flush
+  logfile s!"[{time / 1000}.{"".pushn '0' (3-ms.length) ++ ms}] {type}: {s}\n"
 
 def info : String → Log m Unit := write "INFO"
 def warn : String → Log m Unit := write "WARN"
 def error : String → Log m Unit := write "ERROR"
 
-def run (logfile : IO.FS.Handle) (la : Log m α) : m α := la logfile
-def getHandle : Log m IO.FS.Handle := λ path => pure path
+def run (logfile : String → IO Unit) (la : Log m α) : m α := la logfile
+def getLogger : Log m (String → IO Unit) := λ path => pure path
+
+def toHandle (h : IO.FS.Handle) (la : Log m α) : m α :=
+  run (fun s => do h.putStr s; h.flush) la
+def toStdout (L : Log m α) : m α := do
+  let stdout ← (IO.getStdout : IO _)
+  run (fun s => do stdout.putStr s; stdout.flush) L
 
 instance [Monad m] [Monad n] [MonadLift m n] : MonadLift (Log m) (Log n) where
   monadLift mla := fun handle => liftM <| Log.run handle mla
@@ -248,3 +252,10 @@ theorem List.fins_succ (n : Nat) : List.fins n.succ = 0 :: (List.fins n |>.map (
     rw [ih]
     simp [Fin.succ]
     apply Nat.le_of_lt h
+
+--TODO: PR to Std
+/-- A monadic analogue of `Option.orElse`. -/
+@[inline] def Option.orElseM [Monad m] (x : Option α) (y : m (Option α)) : m (Option α) :=
+  match x with
+  | some a => pure (some a)
+  | none => y

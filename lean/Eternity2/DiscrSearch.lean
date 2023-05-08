@@ -1,8 +1,9 @@
+import Lean
 
 namespace Eternity2.DiscrSearch
 
 inductive Dir | left | right
-deriving Inhabited, DecidableEq, Repr
+deriving Inhabited, DecidableEq, Repr, Lean.ToJson, Lean.FromJson
 
 instance : ToString Dir := ⟨fun
   | .left => "left"

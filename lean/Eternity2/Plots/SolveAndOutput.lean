@@ -39,7 +39,7 @@ def solveAndOutput [Solver IO] (bdir : BoardDir)
     bd.ts = hsize ▸ hcolors ▸ bdir.ts }
     ← IO.mkRef ⟨bdir, rfl, rfl, rfl⟩
   if parallelize then
-    let handle ← Log.getHandle
+    let handle ← Log.getLogger
     let (_ : List Unit) ← (List.fins 24).parMap fun i => do
       Log.run handle do
       let ((), enc) := EncCNF.run! enc do

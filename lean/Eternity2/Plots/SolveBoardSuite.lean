@@ -15,7 +15,7 @@ def solveBoardSuite [LeanSAT.Solver IO] (suite : BoardSuite) (parallelize : Bool
     x.size < y.size ||
       x.size = y.size && x.colors.center.length > y.colors.center.length)
 
-  let handle ← Log.getHandle
+  let handle ← Log.getLogger
   
   -- solve each board in parallel
   let (_ : List Unit) ← bs.toList.parMap (fun bdir => do

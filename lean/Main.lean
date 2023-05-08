@@ -96,7 +96,7 @@ def runSolveTileSetCmd (p : Parsed) : IO UInt32 := do
   IO.FS.writeFile logfile ""
   IO.FS.withFile logfile .append (fun handle =>
     TaskIO.wait <|
-      Log.run handle <|
+      Log.toHandle handle <|
         solveAndOutput
           bd
           { useRedundant, usePolarity}
@@ -168,7 +168,7 @@ def runSolveBoardSuiteCmd (p : Parsed) : IO UInt32 := do
 
   have := cadicalCmd timeout
 
-  IO.FS.withFile logfile .write (Log.run · <| do
+  IO.FS.withFile logfile .write (Log.toHandle · <| do
     Log.info s!"Loading board suite from directory {suite}"
     let bs ← BoardSuite.ofDirectory suite
     Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
@@ -248,7 +248,9 @@ def runFindSolsDiscrSearchCmd (p : Parsed) : IO UInt32 := do
   IO.println s!"found {sols.size} solutions:"
   for (f,_) in sols do
     IO.println f
-  findSolInSignDiscrSearch ts (sols.map (·.2) |>.toList)
+  let _stats ← Log.toStdout <| findSolInSignDiscrSearch tileset.toString ts sols.toList
+  IO.println s!"found all solutions in discr search"
+  
   return 0
 
 def findSolsDiscrSearchCmd := `[Cli|
@@ -259,6 +261,42 @@ def findSolsDiscrSearchCmd := `[Cli|
     tileset : String; "File containing the tileset"
     sols : String; "Directory with solutions"
 ]
+
+def runCalcDiscrSearchStatsCmd (p : Parsed) : IO UInt32 := do
+  let suite : FilePath := p.flag! "suite" |>.as! String
+
+  let logfile : FilePath :=
+    p.flag? "logfile" |>.map (·.as! String)
+      |>.getD (suite / s!"{← IO.monoMsNow}.log")
+
+  ensureDirectoryExists suite
+
+  have := cadicalCmd (timeout := none)
+  have := LeanSAT.Solver.Impl.UniGenCommand
+  have : SignCorrSolver IO := SignCorrSolver.ofModelSample (samples := 100)
+
+  IO.FS.withFile logfile .write (Log.toHandle · <| do
+    Log.info s!"Loading board suite from directory {suite}"
+    let bs ← BoardSuite.ofDirectory suite
+    Log.info s!"Board suite loaded with {bs.boards.size} puzzles"
+    Log.info s!"{bs.boards.map (·.sols.size) |>.foldl (· + ·) 0} solutions present in board suite"
+
+    calcDiscrSearchStats bs
+  )
+
+  return 0
+
+def calcDiscrSearchStatsCmd := `[Cli|
+  "calc-discr-search-stats" VIA runCalcDiscrSearchStatsCmd; ["0.0.1"]
+  "Calculate discrimination search stats for all fully-solved tile sets in the provided board suite. " ++
+  "Already-known solutions are automatically excluded, and fully solved puzzles are skipped. " ++
+  "Outputs any new solutions to the puzzle directory."
+  
+  FLAGS:
+    suite : String; "Directory with the board suite"
+    logfile : String; "File to log detailed results in"
+]
+
 
 def runVisualizeSolCmd (p : Parsed) : IO UInt32 := do
   let tileset : String ← IO.ofExcept <|
