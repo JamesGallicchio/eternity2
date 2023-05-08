@@ -222,7 +222,7 @@ def testSolveTimesCmd := `[Cli|
     defaultValues! #[("use-redundant", "true"), ("use-polarity", "false")]
 ]
 
-def runFindSolsDiscrSearchCmd (p : Parsed) : IO UInt32 := do
+def runCalcSolsDiscrSearchCmd (p : Parsed) : IO UInt32 := do
   let tileset : FilePath ← IO.ofExcept <|
     p.flag? "tileset" |>.map (·.as! String) |>.expectSome fun () => "--tileset <file> argument missing"
   let sols : Option FilePath :=
@@ -253,8 +253,8 @@ def runFindSolsDiscrSearchCmd (p : Parsed) : IO UInt32 := do
   
   return 0
 
-def findSolsDiscrSearchCmd := `[Cli|
-  "find-sols-discr-search" VIA runFindSolsDiscrSearchCmd; ["0.0.1"]
+def calcSolsDiscrSearchCmd := `[Cli|
+  "find-sols-discr-search" VIA runCalcSolsDiscrSearchCmd; ["0.0.1"]
   "Find given board solutions in the board's sign correlation discrimination search tree."
 
   FLAGS:
@@ -331,7 +331,8 @@ def mainCmd := `[Cli|
     solveBoardSuiteCmd;
     solveTileSetCmd;
     testSolveTimesCmd;
-    findSolsDiscrSearchCmd;
+    calcSolsDiscrSearchCmd;
+    calcDiscrSearchStatsCmd;
     visualizeSolCmd
 ]
 
