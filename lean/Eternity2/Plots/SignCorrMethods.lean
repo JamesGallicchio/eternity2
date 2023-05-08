@@ -166,8 +166,14 @@ partial def calcDiscrSearchStats [Solver IO] [Solver.ModelSample IO] [SignCorrSo
     (bs : BoardSuite)
     : Log IO Unit := do
   let logfile ← Log.getLogger
+  let boards ← bs.boards
+    |>.filterM (fun bd => do
+      -- board should have all solutions, and should not already have stat file
+      return bd.allSols && (← (bd.puzFile.withFileName "discr_search_stats.json").pathExists) )
   let tasks : Array (Task (Except IO.Error Unit)) ←
-    bs.boards.filter (·.allSols)
+    boards.insertionSort (fun bd1 bd2 =>
+      bd1.size < bd2.size ||
+      bd1.size = bd2.size && bd1.colors.center < bd2.colors.center)
     |>.mapM (fun b => IO.asTask (Log.run logfile <| do
       let stats ← findSolInSignDiscrSearch
         b.puzFile.toString
